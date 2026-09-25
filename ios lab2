@@ -1,0 +1,41 @@
+void checkBalance(String name, double balance) {
+  print('User: $name | Balance: $balance');
+}
+
+double deposit(double balance, double amount) {
+  balance = balance + amount;
+  print('Deposit: $amount | Balance: $balance');
+  return balance;
+}
+
+double withdraw(String name, double balance, double amount, int pin) {
+  if (pin != 1234) {
+    print('Wrong PIN');
+    return balance;
+  }
+
+  if (amount > balance) {
+    print('Not enough money');
+    return balance;
+  }
+
+  balance = balance - amount;
+  print('Withdrawal: $amount | Balance: $balance');
+  return balance;
+}
+
+void main() {
+  double balance = 1000.0;
+
+  checkBalance('Aigerim', balance);
+
+  balance = deposit(balance, 500.0);
+
+  balance = withdraw('Aigerim', balance, 200.0, 1234);
+
+  balance = withdraw('Aigerim', balance, 300.0, 9999);
+
+  balance = withdraw('Aigerim', balance, 2000.0, 1234);
+
+  print('Final Balance: $balance');
+}
