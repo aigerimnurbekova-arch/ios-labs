@@ -1,0 +1,203 @@
+class Book {
+  String title;
+  String author;
+  double price;
+  bool isBorrowed;
+
+  Book({
+    required this.title,
+    required this.author,
+    required this.price,
+    this.isBorrowed = false,
+  });
+}
+
+class Library {
+  List<Book> books = [];
+
+  void addBook(Book book) {
+    books.add(book);
+  }
+
+  List<Book> getAvailableBooks() {
+    return books.where((book) => !book.isBorrowed).toList();
+  }
+
+  double getTotalValue() {
+    double total = 0;
+
+    for (var book in books) {
+      total += book.price;
+    }
+
+    return total;
+  }
+}
+
+abstract class MediaItem {
+  String id;
+  String title;
+  double price;
+
+  MediaItem({
+    required this.id,
+    required this.title,
+    required this.price,
+  });
+
+  String getDetails();
+}
+
+mixin Downloadable {
+  void download(String title) {
+    print('Downloading "$title"...');
+  }
+}
+
+class Audiobook extends MediaItem with Downloadable {
+  double durationHours;
+  String narrator;
+
+  Audiobook({
+    required String id,
+    required String title,
+    required double price,
+    required this.durationHours,
+    required this.narrator,
+  }) : super(
+          id: id,
+          title: title,
+          price: price,
+        );
+
+  @override
+  String getDetails() {
+    return 'Audiobook: $title by $narrator | Duration: $durationHours h | Price: \$$price';
+  }
+}
+
+class EBook extends MediaItem with Downloadable {
+  double fileSizeMB;
+  String author;
+
+  EBook({
+    required String id,
+    required String title,
+    required double price,
+    required this.fileSizeMB,
+    required this.author,
+  }) : super(
+          id: id,
+          title: title,
+          price: price,
+        );
+
+  @override
+  String getDetails() {
+    return 'EBook: $title by $author | Size: $fileSizeMB MB | Price: \$$price';
+  }
+}
+
+class ShoppingCart {
+  List<MediaItem> items = [];
+
+  void addItem(MediaItem item) {
+    items.add(item);
+  }
+
+  double calculateTotalWithTax() {
+    double total = 0;
+
+    for (var item in items) {
+      total += item.price;
+    }
+
+    return total * 1.12;
+  }
+
+  void printReceipt() {
+    print('--- Shopping Cart Receipt ---');
+
+    for (var item in items) {
+      print(item.getDetails());
+
+      if (item is Audiobook) {
+        item.download(item.title);
+      }
+
+      if (item is EBook) {
+        item.download(item.title);
+      }
+    }
+
+    print(
+      'Total with tax: \$${calculateTotalWithTax().toStringAsFixed(2)}',
+    );
+  }
+}
+
+void main() {
+  print('=== PART 1: LIBRARY SYSTEM ===');
+
+  Library library = Library();
+
+  library.addBook(
+    Book(
+      title: '1984',
+      author: 'George Orwell',
+      price: 15.0,
+    ),
+  );
+
+  library.addBook(
+    Book(
+      title: 'Dart in Action',
+      author: 'Chris Buckett',
+      price: 30.0,
+      isBorrowed: true,
+    ),
+  );
+
+  library.addBook(
+    Book(
+      title: 'The Hobbit',
+      author: 'J.R.R. Tolkien',
+      price: 20.0,
+    ),
+  );
+
+  print('Available Books:');
+
+  for (var book in library.getAvailableBooks()) {
+    print(
+      '- ${book.title} by ${book.author} (\$${book.price})',
+    );
+  }
+
+  print('Total Collection Value: \$${library.getTotalValue()}');
+
+  print('\n=== PART 2: DIGITAL MEDIA STORE ===');
+
+  ShoppingCart cart = ShoppingCart();
+
+  Audiobook book1 = Audiobook(
+    id: 'A1',
+    title: 'Atomic Habits',
+    price: 25.0,
+    durationHours: 5.5,
+    narrator: 'James Clear',
+  );
+
+  EBook book2 = EBook(
+    id: 'E1',
+    title: 'Flutter Basics',
+    price: 10.0,
+    fileSizeMB: 12.5,
+    author: 'John Doe',
+  );
+
+  cart.addItem(book1);
+  cart.addItem(book2);
+
+  cart.printReceipt();
+}
