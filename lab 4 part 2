@@ -1,0 +1,165 @@
+import 'package:flutter/material.dart';
+
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: ProfileScreen(),
+    );
+  }
+}
+
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  State createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State {
+  bool isFollowing = false;
+  bool isLiked = false;
+  bool isDisliked = false;
+
+  int followerCount = 100000;
+  int likeCount = 1000000;
+
+  void toggleFollow() {
+    setState(() {
+      isFollowing = !isFollowing;
+      if (isFollowing) {
+        followerCount++;
+      } else {
+        followerCount--;
+      }
+    });
+  }
+
+  void toggleLike() {
+    setState(() {
+      if (isLiked) {
+        // Если лайк уже стоял — убираем его
+        isLiked = false;
+        likeCount--;
+      } else {
+        // Если стоял дизлайк — убираем его
+        if (isDisliked) {
+          isDisliked = false;
+        }
+        // Ставим лайк
+        isLiked = true;
+        likeCount++;
+      }
+    });
+  }
+
+  void toggleDislike() {
+    setState(() {
+      if (isDisliked) {
+        // Если дизлайк уже стоял — убираем его
+        isDisliked = false;
+      } else {
+        // Если стоял лайк — снимаем лайк и уменьшаем счётчик
+        if (isLiked) {
+          isLiked = false;
+          likeCount--;
+        }
+        // Ставим дизлайк
+        isDisliked = true;
+      }
+    });
+  }
+
+  void reset() {
+    setState(() {
+      isFollowing = false;
+      isLiked = false;
+      isDisliked = false;
+      followerCount = 100000;
+      likeCount = 1000000;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Profile Card'),
+        centerTitle: true,
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircleAvatar(
+                radius: 40,
+                child: Icon(Icons.movie, size: 40),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Freedom Originals',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const Text(
+                'Film Production Studio',
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 15),
+              Text(
+                'Followers: $followerCount',
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 15),
+              ElevatedButton(
+                onPressed: toggleFollow,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isFollowing ? Colors.grey : Colors.blue,
+                ),
+                child: Text(
+                  isFollowing ? 'Following' : 'Follow',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: toggleLike,
+                    icon: Icon(
+                      isLiked ? Icons.thumb_up : Icons.thumb_up_outlined,
+                      color: isLiked ? Colors.blue : Colors.grey,
+                    ),
+                  ),
+                  Text('$likeCount', style: const TextStyle(fontSize: 16)),
+                  const SizedBox(width: 10),
+                  IconButton(
+                    onPressed: toggleDislike,
+                    icon: Icon(
+                      isDisliked ? Icons.thumb_down : Icons.thumb_down_outlined,
+                      color: isDisliked ? Colors.red : Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              OutlinedButton(
+                onPressed: reset,
+                child: const Text('Reset'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
