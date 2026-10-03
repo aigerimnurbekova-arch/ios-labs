@@ -1,0 +1,148 @@
+import 'package:flutter/material.dart';
+
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: ProfileScreen(),
+    );
+  }
+}
+
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  int followerCount = 100000;
+  int likeCount = 1000000;
+
+  void follow() {
+    setState(() {
+      followerCount++;
+    });
+  }
+
+  void like() {
+    setState(() {
+      if (likeCount > 0) {
+        likeCount--;
+      }
+    });
+  }
+
+  void dislike() {
+    setState(() {
+      if (likeCount > 0) {
+        likeCount--;
+      }
+    });
+  }
+
+  void reset() {
+    setState(() {
+      followerCount = 100000;
+      likeCount = 1000000;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Profile Card'),
+        centerTitle: true,
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircleAvatar(
+                radius: 40,
+                child: Icon(Icons.movie, size: 40),
+              ),
+
+              const SizedBox(height: 10),
+
+              const Text(
+                'Freedom Originals',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const Text(
+                'Film Production Studio',
+                style: TextStyle(color: Colors.grey),
+              ),
+
+              const SizedBox(height: 15),
+
+              Text(
+                'Followers: $followerCount',
+                style: const TextStyle(fontSize: 16),
+              ),
+
+              const SizedBox(height: 15),
+
+              ElevatedButton(
+                onPressed: follow,
+                child: const Text('Follow'),
+              ),
+
+              const SizedBox(height: 20),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: like,
+                    icon: const Icon(
+                      Icons.thumb_up,
+                      color: Colors.blue,
+                    ),
+                  ),
+
+                  Text(
+                    '$likeCount',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  IconButton(
+                    onPressed: dislike,
+                    icon: const Icon(
+                      Icons.thumb_down,
+                      color: Colors.red,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
+
+              OutlinedButton(
+                onPressed: reset,
+                child: const Text('Reset'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
