@@ -1,0 +1,268 @@
+
+import 'package:flutter/material.dart';
+
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: ProductScreen(),
+    );
+  }
+}
+
+class ProductScreen extends StatefulWidget {
+  const ProductScreen({super.key});
+
+  @override
+  State<ProductScreen> createState() => _ProductScreenState();
+}
+
+class _ProductScreenState extends State<ProductScreen> {
+  bool isFavorite = false;
+  int cartCount = 0;
+  String selectedCategory = 'Shoes';
+
+  final List<String> categories = [
+    'Shoes',
+    'Nike',
+    'Sportswear',
+    'Running',
+  ];
+
+  Widget buildTag(String title) {
+    bool isSelected = selectedCategory == title;
+
+    return ChoiceChip(
+      label: Text(title),
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() {
+          selectedCategory = title;
+        });
+      },
+      selectedColor: Colors.black,
+      backgroundColor: Colors.grey.shade200,
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : Colors.black,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Stack(
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          height: 300,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: Image.network(
+                              'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=900',
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Center(
+                                  child: Icon(
+                                    Icons.shopping_bag,
+                                    size: 80,
+                                    color: Colors.grey,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 10,
+                          right: 10,
+                          child: IconButton(
+                            onPressed: () {
+                              setState(() {
+                                isFavorite = !isFavorite;
+                              });
+                            },
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.white,
+                            ),
+                            icon: Icon(
+                              isFavorite
+                                  ? Icons.bookmark
+                                  : Icons.bookmark_border,
+                              color: isFavorite
+                                  ? Colors.deepOrange
+                                  : Colors.black,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Nike Air Max',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.star,
+                          color: Colors.amber,
+                        ),
+                        const SizedBox(width: 4),
+                        const Text('4.8'),
+                      ],
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    const Text(
+                      '\$129.99',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.deepOrange,
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: categories.map(buildTag).toList(),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    Text(
+                      'Selected category: $selectedCategory',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black54,
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    const Text(
+                      'Product Details',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    const Text(
+                      'Comfortable sneakers for everyday use. '
+                      'Perfect for walking, running, and casual outfits.',
+                      style: TextStyle(
+                        fontSize: 15,
+                        height: 1.5,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 8,
+                    offset: Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  if (cartCount > 0) ...[
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          cartCount--;
+                        });
+                      },
+                      tooltip: 'Remove one item',
+                      icon: const Icon(
+                        Icons.remove_circle_outline,
+                      ),
+                    ),
+
+                    Text(
+                      '$cartCount',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(width: 8),
+                  ],
+
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            cartCount++;
+                          });
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Text(
+                          'Add to Cart',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
