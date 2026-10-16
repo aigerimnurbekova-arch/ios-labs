@@ -1,0 +1,905 @@
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+void main() {
+  runApp(const KinoPassApp());
+}
+
+// Модель фильма
+class Movie {
+  final String title;
+  final String genre;
+  final int year;
+  final int durationMinutes;
+  final double rating;
+  final String ageLimit;
+  final String description;
+  final String imageUrl;
+
+  const Movie({
+    required this.title,
+    required this.genre,
+    required this.year,
+    required this.durationMinutes,
+    required this.rating,
+    required this.ageLimit,
+    required this.description,
+    required this.imageUrl,
+  });
+
+  String get duration {
+    final hours = durationMinutes ~/ 60;
+    final minutes = durationMinutes % 60;
+    return '$hours ч $minutes мин';
+  }
+}
+
+// Подписка
+class Subscription extends ChangeNotifier {
+  static const int priceTenge = 3;
+  static const int periodDays = 14;
+
+  DateTime? _activeUntil;
+
+  bool get isActive =>
+      _activeUntil != null && DateTime.now().isBefore(_activeUntil!);
+
+  int get daysLeft {
+    if (!isActive) return 0;
+    return _activeUntil!.difference(DateTime.now()).inDays + 1;
+  }
+
+  void activate() {
+    final start = isActive ? _activeUntil! : DateTime.now();
+    _activeUntil = start.add(const Duration(days: periodDays));
+    notifyListeners();
+  }
+}
+
+// Список фильмов с отдельными изображениями
+const List<Movie> nowInCinema = [
+  Movie(
+    title: 'Дюна: Часть третья',
+    genre: 'Фантастика',
+    year: 2026,
+    durationMinutes: 165,
+    rating: 8.4,
+    ageLimit: '16+',
+    description:
+        'Пол Атрейдес правит империей, но цена власти оказывается выше, '
+        'чем он ожидал. Продолжение культовой саги.',
+    imageUrl:
+        'https://images.unsplash.com/photo-1509316785289-025f5b846b35?auto=format&fit=crop&w=700&q=85',
+  ),
+  Movie(
+    title: 'Тихая гавань',
+    genre: 'Драма',
+    year: 2026,
+    durationMinutes: 118,
+    rating: 7.6,
+    ageLimit: '12+',
+    description:
+        'Семья переезжает в маленький прибрежный город, '
+        'чтобы начать жизнь с чистого листа.',
+    imageUrl:
+        'https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=700&q=85',
+  ),
+  Movie(
+    title: 'Последний рейс',
+    genre: 'Триллер',
+    year: 2026,
+    durationMinutes: 104,
+    rating: 7.1,
+    ageLimit: '18+',
+    description:
+        'Ночной рейс, сто пассажиров и один из них — не тот, '
+        'за кого себя выдаёт.',
+    imageUrl:
+        'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=700&q=85',
+  ),
+  Movie(
+    title: 'Кот и космос',
+    genre: 'Мультфильм',
+    year: 2026,
+    durationMinutes: 92,
+    rating: 8.0,
+    ageLimit: '0+',
+    description:
+        'Любопытный кот случайно попадает на космическую станцию '
+        'и спасает экипаж.',
+    imageUrl:
+        'https://images.unsplash.com/photo-1573865526739-10659fec78a5?auto=format&fit=crop&w=700&q=85',
+  ),
+  Movie(
+    title: 'Степной ветер',
+    genre: 'Приключения',
+    year: 2026,
+    durationMinutes: 131,
+    rating: 7.9,
+    ageLimit: '12+',
+    description:
+        'Двое друзей отправляются через степь, '
+        'чтобы успеть на главный праздник года.',
+    imageUrl:
+        'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=700&q=85',
+  ),
+];
+
+// Главное приложение
+class KinoPassApp extends StatefulWidget {
+  const KinoPassApp({super.key});
+
+  @override
+  State<KinoPassApp> createState() => _KinoPassAppState();
+}
+
+class _KinoPassAppState extends State<KinoPassApp> {
+  final Subscription subscription = Subscription();
+
+  @override
+  void dispose() {
+    subscription.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'KinoPass',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        colorSchemeSeed: Colors.deepOrange,
+        useMaterial3: true,
+      ),
+      home: HomeScreen(subscription: subscription),
+    );
+  }
+}
+
+// Главный экран с нижней навигацией
+class HomeScreen extends StatefulWidget {
+  final Subscription subscription;
+
+  const HomeScreen({super.key, required this.subscription});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int selectedIndex = 0;
+  bool searchMode = false;
+  String searchText = '';
+
+  final Set<String> favoriteTitles = {};
+
+  void toggleFavorite(Movie movie) {
+    setState(() {
+      if (favoriteTitles.contains(movie.title)) {
+        favoriteTitles.remove(movie.title);
+      } else {
+        favoriteTitles.add(movie.title);
+      }
+    });
+  }
+
+  void openMovie(Movie movie) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MovieDetailScreen(
+          movie: movie,
+          subscription: widget.subscription,
+          isFavorite: favoriteTitles.contains(movie.title),
+          onFavoriteChanged: () => toggleFavorite(movie),
+        ),
+      ),
+    ).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  void openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SettingsScreen(
+          subscription: widget.subscription,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pages = [
+      buildFeed(),
+      buildFavorites(),
+      buildProfile(),
+    ];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: searchMode
+            ? TextField(
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Поиск фильмов...',
+                  border: InputBorder.none,
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    searchText = value;
+                    selectedIndex = 0;
+                  });
+                },
+              )
+            : const Text('KinoPass'),
+        actions: [
+          // Кнопка поиска
+          IconButton(
+            tooltip: searchMode ? 'Закрыть поиск' : 'Поиск',
+            icon: Icon(searchMode ? Icons.close : Icons.search),
+            onPressed: () {
+              setState(() {
+                searchMode = !searchMode;
+                searchText = '';
+
+                if (searchMode) {
+                  selectedIndex = 0;
+                }
+              });
+            },
+          ),
+
+          // Кнопка настроек
+          IconButton(
+            tooltip: 'Настройки',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: openSettings,
+          ),
+        ],
+      ),
+
+      // IndexedStack сохраняет состояние вкладок
+      body: IndexedStack(
+        index: selectedIndex,
+        children: pages,
+      ),
+
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            selectedIndex = index;
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.movie_outlined),
+            selectedIcon: Icon(Icons.movie),
+            label: 'Feed',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.favorite_border),
+            selectedIcon: Icon(Icons.favorite),
+            label: 'Favorites',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Вкладка Feed
+  Widget buildFeed() {
+    final movies = nowInCinema.where((movie) {
+      final query = searchText.toLowerCase();
+
+      return movie.title.toLowerCase().contains(query) ||
+          movie.genre.toLowerCase().contains(query);
+    }).toList();
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        ListenableBuilder(
+          listenable: widget.subscription,
+          builder: (_, __) => SubscriptionBanner(
+            subscription: widget.subscription,
+            onSubscribe: () {
+              showSubscriptionSheet(context, widget.subscription);
+            },
+          ),
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'Сейчас в кино',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (movies.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(
+              child: Text('Фильмы не найдены'),
+            ),
+          ),
+        for (final movie in movies)
+          MovieListItem(
+            movie: movie,
+            isFavorite: favoriteTitles.contains(movie.title),
+            onFavorite: () => toggleFavorite(movie),
+            onTap: () => openMovie(movie),
+          ),
+      ],
+    );
+  }
+
+  // Вкладка Favorites
+  Widget buildFavorites() {
+    final movies = nowInCinema
+        .where((movie) => favoriteTitles.contains(movie.title))
+        .toList();
+
+    if (movies.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Пока нет избранных фильмов.\n'
+            'Добавьте фильм на вкладке Feed.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text(
+          'Избранные фильмы',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        for (final movie in movies)
+          MovieListItem(
+            movie: movie,
+            isFavorite: true,
+            onFavorite: () => toggleFavorite(movie),
+            onTap: () => openMovie(movie),
+          ),
+      ],
+    );
+  }
+
+  // Вкладка Profile
+  Widget buildProfile() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const CircleAvatar(
+          radius: 42,
+          child: Icon(Icons.person, size: 48),
+        ),
+        const SizedBox(height: 12),
+        const Center(
+          child: Text(
+            'Пользователь KinoPass',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.favorite),
+            title: const Text('Избранные фильмы'),
+            subtitle: Text('Сохранено: ${favoriteTitles.length}'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              setState(() {
+                selectedIndex = 1;
+              });
+            },
+          ),
+        ),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.settings),
+            title: const Text('Настройки'),
+            subtitle: const Text('Открыть настройки приложения'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: openSettings,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Карточка фильма
+class MovieListItem extends StatelessWidget {
+  final Movie movie;
+  final bool isFavorite;
+  final VoidCallback onFavorite;
+  final VoidCallback onTap;
+
+  const MovieListItem({
+    super.key,
+    required this.movie,
+    required this.isFavorite,
+    required this.onFavorite,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Row(
+          children: [
+            MoviePoster(
+              movie: movie,
+              width: 95,
+              height: 125,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      movie.title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text('${movie.genre} · ${movie.year}'),
+                    const SizedBox(height: 4),
+                    Text('${movie.duration} · ${movie.ageLimit}'),
+                    const SizedBox(height: 4),
+                    RatingRow(rating: movie.rating),
+                  ],
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: onFavorite,
+              icon: Icon(
+                isFavorite ? Icons.favorite : Icons.favorite_border,
+                color: isFavorite ? Colors.redAccent : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Экран подробной информации о фильме
+class MovieDetailScreen extends StatelessWidget {
+  final Movie movie;
+  final Subscription subscription;
+  final bool isFavorite;
+  final VoidCallback onFavoriteChanged;
+
+  const MovieDetailScreen({
+    super.key,
+    required this.movie,
+    required this.subscription,
+    required this.isFavorite,
+    required this.onFavoriteChanged,
+  });
+
+  // Трейлер доступен только для первого фильма
+  Future<void> openTrailer(BuildContext context) async {
+    final url = Uri.parse(
+      'https://www.youtube.com/results?search_query='
+      'Dune+Part+Three+official+trailer',
+    );
+
+    try {
+      final opened = await launchUrl(
+        url,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!opened && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Не удалось открыть YouTube'),
+          ),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Проверьте подключение к интернету'),
+          ),
+        );
+      }
+    }
+  }
+
+  void watchMovie(BuildContext context) {
+    if (subscription.isActive) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PlayerScreen(movie: movie),
+        ),
+      );
+    } else {
+      showSubscriptionSheet(context, subscription);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(movie.title),
+        actions: [
+          IconButton(
+            onPressed: onFavoriteChanged,
+            icon: Icon(
+              isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: isFavorite ? Colors.redAccent : null,
+            ),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          MoviePoster(
+            movie: movie,
+            width: double.infinity,
+            height: 330,
+          ),
+          const SizedBox(height: 20),
+          Text(
+            movie.title,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${movie.genre} · ${movie.year} · '
+            '${movie.duration} · ${movie.ageLimit}',
+          ),
+          const SizedBox(height: 8),
+          RatingRow(rating: movie.rating),
+          const SizedBox(height: 16),
+          Text(
+            movie.description,
+            style: const TextStyle(height: 1.5),
+          ),
+
+          // Кнопка трейлера только у первого фильма
+          if (movie.title == 'Дюна: Часть третья') ...[
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: () => openTrailer(context),
+              icon: const Icon(Icons.play_circle_outline),
+              label: const Text('Смотреть трейлер'),
+            ),
+          ],
+
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.arrow_back),
+            label: const Text('Вернуться к списку фильмов'),
+          ),
+          const SizedBox(height: 12),
+          ListenableBuilder(
+            listenable: subscription,
+            builder: (_, __) => FilledButton.icon(
+              onPressed: () => watchMovie(context),
+              icon: Icon(
+                subscription.isActive ? Icons.play_arrow : Icons.lock,
+              ),
+              label: Text(
+                subscription.isActive
+                    ? 'Смотреть'
+                    : 'Смотреть по подписке за '
+                        '${Subscription.priceTenge} ₸',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Экран настроек
+class SettingsScreen extends StatefulWidget {
+  final Subscription subscription;
+
+  const SettingsScreen({
+    super.key,
+    required this.subscription,
+  });
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  bool notifications = true;
+  bool autoplay = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Настройки'),
+      ),
+      body: ListView(
+        children: [
+          SwitchListTile(
+            secondary: const Icon(Icons.notifications_outlined),
+            title: const Text('Уведомления'),
+            subtitle: const Text(
+              'Получать уведомления о новых фильмах',
+            ),
+            value: notifications,
+            onChanged: (value) {
+              setState(() {
+                notifications = value;
+              });
+            },
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.play_circle_outline),
+            title: const Text('Автовоспроизведение'),
+            subtitle: const Text(
+              'Автоматически запускать видео',
+            ),
+            value: autoplay,
+            onChanged: (value) {
+              setState(() {
+                autoplay = value;
+              });
+            },
+          ),
+          ListenableBuilder(
+            listenable: widget.subscription,
+            builder: (_, __) => ListTile(
+              leading: const Icon(Icons.verified_user_outlined),
+              title: const Text('Подписка'),
+              subtitle: Text(
+                widget.subscription.isActive
+                    ? 'Активна. Осталось дней: '
+                        '${widget.subscription.daysLeft}'
+                    : 'Не активна',
+              ),
+            ),
+          ),
+          const AboutListTile(
+            icon: Icon(Icons.info_outline),
+            applicationName: 'KinoPass',
+            applicationVersion: '1.0.0',
+            child: Text('О приложении'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Баннер подписки
+class SubscriptionBanner extends StatelessWidget {
+  final Subscription subscription;
+  final VoidCallback onSubscribe;
+
+  const SubscriptionBanner({
+    super.key,
+    required this.subscription,
+    required this.onSubscribe,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (subscription.isActive) {
+      return Card(
+        child: ListTile(
+          leading: const Icon(Icons.verified),
+          title: const Text('Подписка активна'),
+          subtitle: Text(
+            'Осталось дней: ${subscription.daysLeft}',
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Все фильмы из кино — дома',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text('3 ₸ за 14 дней'),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: onSubscribe,
+              child: const Text('Оформить подписку'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Окно оформления подписки
+void showSubscriptionSheet(
+  BuildContext context,
+  Subscription subscription,
+) {
+  showModalBottomSheet(
+    context: context,
+    builder: (sheetContext) => Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Подписка KinoPass',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text('• Все фильмы из списка'),
+          const Text('• Без рекламы'),
+          const Text('• Доступ на 14 дней'),
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: () {
+              subscription.activate();
+              Navigator.pop(sheetContext);
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Подписка оформлена!'),
+                ),
+              );
+            },
+            child: const Text('Оплатить 3 ₸'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// Экран видеоплеера
+class PlayerScreen extends StatelessWidget {
+  final Movie movie;
+
+  const PlayerScreen({
+    super.key,
+    required this.movie,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(movie.title),
+      ),
+      body: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.play_circle_outline,
+              size: 96,
+            ),
+            SizedBox(height: 12),
+            Text('Здесь будет видеоплеер'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Виджет изображения фильма
+class MoviePoster extends StatelessWidget {
+  final Movie movie;
+  final double width;
+  final double height;
+
+  const MoviePoster({
+    super.key,
+    required this.movie,
+    required this.width,
+    required this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      height: height,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          movie.imageUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: Colors.blueGrey,
+            child: const Icon(
+              Icons.movie,
+              size: 60,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Рейтинг фильма
+class RatingRow extends StatelessWidget {
+  final double rating;
+
+  const RatingRow({
+    super.key,
+    required this.rating,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(
+          Icons.star,
+          color: Colors.amber,
+          size: 18,
+        ),
+        const SizedBox(width: 4),
+        Text(rating.toStringAsFixed(1)),
+      ],
+    );
+  }
+}
