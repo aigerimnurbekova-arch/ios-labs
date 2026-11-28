@@ -1,10 +1,3989 @@
+// Lab 13 — KinoPass + Geotagged Photo Diary (camera, gallery, GPS).
+// Put this file into lib/main.dart of a Flutter project and add the packages:
+//   flutter pub add provider url_launcher http shared_preferences flutter_bloc:^8.1.3 equatable:^2.0.5 image_picker geolocator permission_handler path_provider
+//
+// Android — android/app/src/main/AndroidManifest.xml, inside <manifest>:
+//   <uses-permission android:name="android.permission.CAMERA" />
+//   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+//   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+//   <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+//   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+// and in android/app/build.gradle.kts: compileSdk = 37 (permission_handler_android needs it).
+//
+// iOS — ios/Runner/Info.plist:
+//   NSCameraUsageDescription, NSPhotoLibraryUsageDescription, NSLocationWhenInUseUsageDescription
+// The iOS simulator has no camera: use Gallery there, or a real phone.
+
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+
+import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';import 'package:provider/provider.dart';import 'package:url_launcher/url_launcher.dart';Future<void> main() async {
+import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final preferences = await SharedPreferences.getInstance();
   final savedDarkMode = preferences.getBool('app_theme_dark_mode') ?? false;
   runApp(KinoPassApp(initialDarkMode: savedDarkMode));
-}// ==================== MOVIE MODEL ====================class Movie {  final String id;  final String title;  final String genre;  final int year;  final int durationMinutes;  final double rating;  final String ageLimit;  final String description;  final String imageUrl;  final int price;  const Movie({    required this.id,    required this.title,    required this.genre,    required this.year,    required this.durationMinutes,    required this.rating,    required this.ageLimit,    required this.description,    required this.imageUrl,    required this.price,  });  String get duration => '$durationMinutes мин';}// ==================== MOVIES ====================final List<Movie> nowInCinema = [  Movie(    id: '1',    title: 'Дюна: Часть третья',    genre: 'Фантастика',    year: 2026,    durationMinutes: 165,    rating: 8.4,    ageLimit: '16+',    price: 2500,    imageUrl:        'https://images.unsplash.com/photo-1509316785289-025f5b846b35?w=800',    description:        'Продолжение масштабной истории о пустынной планете Арракис. Пол Атрейдес сталкивается с новыми испытаниями и сложным выбором.',  ),  Movie(    id: '2',    title: 'Тихая гавань',    genre: 'Драма',    year: 2026,    durationMinutes: 118,    rating: 7.6,    ageLimit: '12+',    price: 2000,    imageUrl:        'https://images.unsplash.com/photo-1500375592092-40eb2168fd21?w=800',    description:        'История о людях, которые пытаются начать новую жизнь и найти своё место в мире.',  ),  Movie(    id: '3',    title: 'Последний рейс',    genre: 'Триллер',    year: 2026,    durationMinutes: 104,    rating: 7.1,    ageLimit: '18+',    price: 1800,    imageUrl:        'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800',    description:        'Обычный авиарейс превращается в опасное путешествие, когда на борту начинают происходить странные события.',  ),  Movie(    id: '4',    title: 'Кот и космос',    genre: 'Мультфильм',    year: 2026,    durationMinutes: 92,    rating: 8.0,    ageLimit: '0+',    price: 1500,    imageUrl:        'https://images.unsplash.com/photo-1573865526739-10659fec78a5?w=800',    description:        'Маленький кот отправляется в большое космическое приключение и находит новых друзей.',  ),  Movie(    id: '5',    title: 'Степной ветер',    genre: 'Приключения',    year: 2026,    durationMinutes: 131,    rating: 7.9,    ageLimit: '12+',    price: 2200,    imageUrl:        'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800',    description:        'Приключенческая история о путешествии по бескрайним степям и поиске своего пути.',  ),  Movie(    id: '6',    title: 'Последняя премьера',    genre: 'Детектив',    year: 2026,    durationMinutes: 115,    rating: 8.1,    ageLimit: '16+',    price: 2300,    imageUrl:        'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800',    description:        'Загадочная история, в которой каждый новый факт меняет ход расследования.',  ),];// ==================== SUBSCRIPTION ====================class Subscription extends ChangeNotifier {  DateTime? _activeUntil;  bool get isActive =>      _activeUntil != null && _activeUntil!.isAfter(DateTime.now());  int get daysLeft {    if (!isActive) return 0;    return _activeUntil!.difference(DateTime.now()).inDays + 1;  }  void activate() {    _activeUntil = DateTime.now().add(const Duration(days: 14));    notifyListeners();  }}// ==================== CART PROVIDER ====================class CartProvider extends ChangeNotifier {
+}
+
+// ==================== MOVIE MODEL ====================
+
+class Movie {
+  final String id;
+  final String title;
+  final String genre;
+  final int year;
+  final int durationMinutes;
+  final double rating;
+  final String ageLimit;
+  final String description;
+  final String imageUrl;
+  final int price;
+
+  const Movie({
+    required this.id,
+    required this.title,
+    required this.genre,
+    required this.year,
+    required this.durationMinutes,
+    required this.rating,
+    required this.ageLimit,
+    required this.description,
+    required this.imageUrl,
+    required this.price,
+  });
+
+  String get duration => '$durationMinutes мин';
+}
+
+// ==================== MOVIES ====================
+
+final List<Movie> nowInCinema = [
+  Movie(
+    id: '1',
+    title: 'Дюна: Часть третья',
+    genre: 'Фантастика',
+    year: 2026,
+    durationMinutes: 165,
+    rating: 8.4,
+    ageLimit: '16+',
+    price: 2500,
+    imageUrl:
+        'https://images.unsplash.com/photo-1509316785289-025f5b846b35?w=800',
+    description: 'Продолжение масштабной истории о пустынной планете Арракис. Пол Атрейдес сталкивается с новыми испытаниями и сложным выбором.',
+  ),
+  Movie(
+    id: '2',
+    title: 'Тихая гавань',
+    genre: 'Драма',
+    year: 2026,
+    durationMinutes: 118,
+    rating: 7.6,
+    ageLimit: '12+',
+    price: 2000,
+    imageUrl:
+        'https://images.unsplash.com/photo-1500375592092-40eb2168fd21?w=800',
+    description: 'История о людях, которые пытаются начать новую жизнь и найти своё место в мире.',
+  ),
+  Movie(
+    id: '3',
+    title: 'Последний рейс',
+    genre: 'Триллер',
+    year: 2026,
+    durationMinutes: 104,
+    rating: 7.1,
+    ageLimit: '18+',
+    price: 1800,
+    imageUrl:
+        'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800',
+    description: 'Обычный авиарейс превращается в опасное путешествие, когда на борту начинают происходить странные события.',
+  ),
+  Movie(
+    id: '4',
+    title: 'Кот и космос',
+    genre: 'Мультфильм',
+    year: 2026,
+    durationMinutes: 92,
+    rating: 8.0,
+    ageLimit: '0+',
+    price: 1500,
+    imageUrl:
+        'https://images.unsplash.com/photo-1573865526739-10659fec78a5?w=800',
+    description: 'Маленький кот отправляется в большое космическое приключение и находит новых друзей.',
+  ),
+  Movie(
+    id: '5',
+    title: 'Степной ветер',
+    genre: 'Приключения',
+    year: 2026,
+    durationMinutes: 131,
+    rating: 7.9,
+    ageLimit: '12+',
+    price: 2200,
+    imageUrl:
+        'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800',
+    description: 'Приключенческая история о путешествии по бескрайним степям и поиске своего пути.',
+  ),
+  Movie(
+    id: '6',
+    title: 'Последняя премьера',
+    genre: 'Детектив',
+    year: 2026,
+    durationMinutes: 115,
+    rating: 8.1,
+    ageLimit: '16+',
+    price: 2300,
+    imageUrl:
+        'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800',
+    description: 'Загадочная история, в которой каждый новый факт меняет ход расследования.',
+  ),
+];
+
+// ==================== SUBSCRIPTION ====================
+
+class Subscription extends ChangeNotifier {
+  DateTime? _activeUntil;
+
+  bool get isActive =>
+      _activeUntil != null && _activeUntil!.isAfter(DateTime.now());
+
+  int get daysLeft {
+    if (!isActive) return 0;
+    return _activeUntil!.difference(DateTime.now()).inDays + 1;
+  }
+
+  void activate() {
+    _activeUntil = DateTime.now().add(const Duration(days: 14));
+    notifyListeners();
+  }
+}
+
+// ==================== CART PROVIDER ====================
+
+class CartProvider extends ChangeNotifier {
   final List<Movie> _items = [];
   final List<Product> _products = [];
+  List<Movie> get items => List.unmodifiable(_items);
+  List<Product> get productItems => List.unmodifiable(_products);
+
+  void addProductToCart(Product product) {
+    if (_products.any((item) => item.id == product.id)) return;
+    _products.add(product);
+    notifyListeners();
+  }
+
+  int get itemCount => _items.length;
+
+  int get totalPrice => _items.fold(0, (total, movie) => total + movie.price);
+
+  bool contains(Movie movie) {
+    return _items.any((item) => item.id == movie.id);
+  }
+
+  void addToCart(Movie movie) {
+    if (contains(movie)) return;
+    _items.add(movie);
+    notifyListeners();
+  }
+
+  void removeFromCart(Movie movie) {
+    _items.removeWhere((item) => item.id == movie.id);
+    notifyListeners();
+  }
+
+  void clearCart() {
+    _items.clear();
+    notifyListeners();
+  }
+}
+
+// ==================== APP ====================
+
+class KinoPassApp extends StatefulWidget {
+  final bool initialDarkMode;
+  const KinoPassApp({super.key, required this.initialDarkMode});
+  @override
+  State<KinoPassApp> createState() => _KinoPassAppState();
+}
+
+class _KinoPassAppState extends State<KinoPassApp> {
+  final Subscription subscription = Subscription();
+  late bool isDarkMode = widget.initialDarkMode;
+
+  void updateTheme(bool value) {
+    setState(() => isDarkMode = value);
+  }
+
+  @override
+  void dispose() {
+    subscription.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (context) => AuthCubit()),
+        BlocProvider(create: (context) => ShopCartBloc()),
+      ],
+      child: ChangeNotifierProvider(
+        create: (context) => CartProvider(),
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'KinoPass',
+          theme: ThemeData(
+            brightness: isDarkMode ? Brightness.dark : Brightness.light,
+            scaffoldBackgroundColor: isDarkMode
+                ? const Color(0xFF111111)
+                : const Color(0xFFF7F7F7),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.deepOrange,
+              brightness: isDarkMode ? Brightness.dark : Brightness.light,
+            ),
+            useMaterial3: true,
+          ),
+          home: HomeScreen(
+            subscription: subscription,
+            isDarkMode: isDarkMode,
+            onThemeChanged: updateTheme,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== HOME SCREEN ====================
+
+class HomeScreen extends StatefulWidget {
+  final Subscription subscription;
+  final bool isDarkMode;
+  final ValueChanged<bool> onThemeChanged;
+  const HomeScreen({
+    super.key,
+    required this.subscription,
+    required this.isDarkMode,
+    required this.onThemeChanged,
+  });
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int selectedIndex = 0;
+  bool isGridView = false;
+  bool isSearching = false;
+
+  final TextEditingController searchController = TextEditingController();
+  final Set<String> favoriteTitles = {};
+
+  List<Movie> movies = List.from(nowInCinema);
+
+  List<Movie> get filteredMovies {
+    if (searchController.text.isEmpty) return movies;
+
+    return movies.where((movie) {
+      return movie.title.toLowerCase().contains(
+        searchController.text.toLowerCase(),
+      );
+    }).toList();
+  }
+
+  List<Movie> get favoriteMovies {
+    return movies
+        .where((movie) => favoriteTitles.contains(movie.title))
+        .toList();
+  }
+
+  void toggleFavorite(Movie movie) {
+    setState(() {
+      if (favoriteTitles.contains(movie.title)) {
+        favoriteTitles.remove(movie.title);
+      } else {
+        favoriteTitles.add(movie.title);
+      }
+    });
+  }
+
+  Future<void> refreshMovies() async {
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    if (!mounted) return;
+
+    final newMovie = Movie(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      title: 'Новая премьера',
+      genre: 'Новинка',
+      year: 2026,
+      durationMinutes: 110,
+      rating: 8.2,
+      ageLimit: '12+',
+      price: 2000,
+      imageUrl:
+          'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800',
+      description: 'Новая премьера в каталоге KinoPass.',
+    );
+
+    setState(() {
+      movies.insert(0, newMovie);
+    });
+  }
+
+  void deleteMovie(Movie movie) {
+    final index = movies.indexWhere((item) => item.id == movie.id);
+
+    if (index == -1) return;
+
+    setState(() {
+      movies.removeAt(index);
+    });
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${movie.title} удалён'),
+        action: SnackBarAction(
+          label: 'UNDO',
+          onPressed: () {
+            setState(() {
+              movies.insert(index.clamp(0, movies.length), movie);
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  void resetCatalog() {
+    setState(() {
+      movies = List.from(nowInCinema);
+      searchController.clear();
+    });
+  }
+
+  Widget deleteBackground() {
+    return Container(
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.only(right: 25),
+      color: Colors.red,
+      child: const Icon(Icons.delete, color: Colors.white, size: 30),
+    );
+  }
+
+  // ==================== LIST VIEW ====================
+
+  Widget buildListView() {
+    final visibleMovies = filteredMovies;
+
+    return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(12),
+      itemCount: visibleMovies.length,
+      separatorBuilder: (context, index) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final movie = visibleMovies[index];
+
+        return Dismissible(
+          key: ValueKey(movie.id),
+          direction: DismissDirection.endToStart,
+          background: deleteBackground(),
+          onDismissed: (direction) {
+            deleteMovie(movie);
+          },
+          child: MovieListItem(
+            movie: movie,
+            isFavorite: favoriteTitles.contains(movie.title),
+            onFavorite: () => toggleFavorite(movie),
+            isInCart: context.watch<CartProvider>().contains(movie),
+            onCart: () {
+              final cart = context.read<CartProvider>();
+              if (cart.contains(movie)) {
+                cart.removeFromCart(movie);
+              } else {
+                cart.addToCart(movie);
+              }
+            },
+            onTap: () => openMovie(movie),
+          ),
+        );
+      },
+    );
+  }
+
+  // ==================== GRID VIEW ====================
+
+  Widget buildGridView() {
+    final visibleMovies = filteredMovies;
+
+    return GridView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(12),
+      itemCount: visibleMovies.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.72,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
+      itemBuilder: (context, index) {
+        final movie = visibleMovies[index];
+
+        return Dismissible(
+          key: ValueKey(movie.id),
+          direction: DismissDirection.endToStart,
+          background: deleteBackground(),
+          onDismissed: (direction) {
+            deleteMovie(movie);
+          },
+          child: MovieGridItem(
+            movie: movie,
+            isFavorite: favoriteTitles.contains(movie.title),
+            onFavorite: () => toggleFavorite(movie),
+            isInCart: context.watch<CartProvider>().contains(movie),
+            onCart: () {
+              final cart = context.read<CartProvider>();
+              if (cart.contains(movie)) {
+                cart.removeFromCart(movie);
+              } else {
+                cart.addToCart(movie);
+              }
+            },
+            onTap: () => openMovie(movie),
+          ),
+        );
+      },
+    );
+  }
+
+  // ==================== EMPTY STATE ====================
+
+  Widget buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.movie_creation_outlined,
+            size: 65,
+            color: Colors.grey,
+          ),
+          const SizedBox(height: 15),
+          const Text('Catalog is Empty', style: TextStyle(fontSize: 20)),
+          const SizedBox(height: 15),
+          ElevatedButton(
+            onPressed: resetCatalog,
+            child: const Text('Reset Catalog'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== FEED ====================
+
+  Widget buildFeed() {
+    if (movies.isEmpty) {
+      return buildEmptyState();
+    }
+
+    return Column(
+      children: [
+        SubscriptionBanner(subscription: widget.subscription),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Сейчас в кино',
+                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Список',
+                onPressed: () {
+                  setState(() {
+                    isGridView = false;
+                  });
+                },
+                icon: Icon(
+                  Icons.view_list,
+                  color: isGridView ? Colors.grey : Colors.deepOrange,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Сетка',
+                onPressed: () {
+                  setState(() {
+                    isGridView = true;
+                  });
+                },
+                icon: Icon(
+                  Icons.grid_view,
+                  color: isGridView ? Colors.deepOrange : Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: refreshMovies,
+            child: isGridView ? buildGridView() : buildListView(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ==================== FAVORITES ====================
+
+  Widget buildFavorites() {
+    if (favoriteMovies.isEmpty) {
+      return const Center(
+        child: Text(
+          'Пока нет избранных фильмов',
+          style: TextStyle(fontSize: 17),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: favoriteMovies.length,
+      separatorBuilder: (context, index) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final movie = favoriteMovies[index];
+
+        return MovieListItem(
+          movie: movie,
+          isFavorite: true,
+          onFavorite: () => toggleFavorite(movie),
+          isInCart: context.watch<CartProvider>().contains(movie),
+          onCart: () {
+            final cart = context.read<CartProvider>();
+            if (cart.contains(movie)) {
+              cart.removeFromCart(movie);
+            } else {
+              cart.addToCart(movie);
+            }
+          },
+          onTap: () => openMovie(movie),
+        );
+      },
+    );
+  }
+
+  // ==================== PROFILE ====================
+
+  Widget buildProfile() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircleAvatar(
+            radius: 48,
+            backgroundColor: Colors.deepOrange,
+            child: Icon(Icons.person, size: 55, color: Colors.white),
+          ),
+          const SizedBox(height: 15),
+          const Text(
+            'Пользователь KinoPass',
+            style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 25),
+          ListTile(
+            leading: const Icon(Icons.favorite),
+            title: const Text('Избранные фильмы'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              setState(() {
+                selectedIndex = 1;
+              });
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.settings),
+            title: const Text('Настройки'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: openSettings,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== NAVIGATION ====================
+
+  void openMovie(Movie movie) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MovieDetailScreen(
+          movie: movie,
+          subscription: widget.subscription,
+          isFavorite: favoriteTitles.contains(movie.title),
+          onFavorite: () => toggleFavorite(movie),
+        ),
+      ),
+    );
+  }
+
+  void openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SettingsScreen(subscription: widget.subscription),
+      ),
+    );
+  }
+
+  void goBackToHome() {
+    setState(() {
+      selectedIndex = 0;
+    });
+  }
+
+  // ==================== MAIN BUILD ====================
+
+  @override
+  Widget build(BuildContext context) {
+    final titles = ['KinoPass', 'Избранное', 'Профиль'];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: isSearching
+            ? TextField(
+                controller: searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Поиск фильма...',
+                  border: InputBorder.none,
+                ),
+                onChanged: (value) {
+                  setState(() {});
+                },
+              )
+            : Text(titles[selectedIndex]),
+        leading: selectedIndex != 0
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: goBackToHome,
+              )
+            : null,
+        actions: [
+          PopupMenuButton<String>(
+            tooltip: 'Lab screens',
+            icon: const Icon(Icons.apps),
+            onSelected: (value) {
+              final Widget screen;
+              switch (value) {
+                case 'Offline Notes & Settings Vault':
+                  screen = NotesVaultScreen(
+                    isDarkMode: widget.isDarkMode,
+                    onThemeChanged: widget.onThemeChanged,
+                  );
+                case 'BLoC Shop':
+                  final isLoggedIn =
+                      context.read<AuthCubit>().state is AuthSuccess;
+                  screen = isLoggedIn
+                      ? const ShopCatalogScreen()
+                      : const ShopLoginScreen();
+                case 'Cloud Product Explorer':
+                  screen = const ProductExplorerScreen();
+                case 'Photo Diary':
+                  screen = const PhotoDiaryScreen();
+                default:
+                  return;
+              }
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => screen),
+              );
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'Offline Notes & Settings Vault',
+                child: ListTile(
+                  leading: const Icon(Icons.note_alt_outlined),
+                  title: const Text('Offline Notes & Settings Vault'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'BLoC Shop',
+                child: ListTile(
+                  leading: const Icon(Icons.storefront_outlined),
+                  title: const Text('BLoC Shop'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'Cloud Product Explorer',
+                child: ListTile(
+                  leading: const Icon(Icons.cloud_download_outlined),
+                  title: const Text('Cloud Product Explorer'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'Photo Diary',
+                child: ListTile(
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: const Text('Photo Diary'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
+          IconButton(
+            tooltip: 'Корзина',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CartScreen()),
+              );
+            },
+            icon: Consumer<CartProvider>(
+              builder: (context, cart, child) {
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.shopping_cart_outlined),
+                    if (cart.itemCount > 0)
+                      Positioned(
+                        right: -7,
+                        top: -7,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.deepOrange,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 18,
+                            minHeight: 18,
+                          ),
+                          child: Text(
+                            '${cart.itemCount}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+          if (selectedIndex == 0) ...[
+            IconButton(
+              icon: Icon(isSearching ? Icons.close : Icons.search),
+              onPressed: () {
+                setState(() {
+                  isSearching = !isSearching;
+                  if (!isSearching) {
+                    searchController.clear();
+                  }
+                });
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: openSettings,
+            ),
+          ],
+        ],
+      ),
+      body: selectedIndex == 0
+          ? buildFeed()
+          : selectedIndex == 1
+          ? buildFavorites()
+          : buildProfile(),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            selectedIndex = index;
+            isSearching = false;
+            searchController.clear();
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Главная',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.favorite_outline),
+            selectedIcon: Icon(Icons.favorite),
+            label: 'Избранное',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Профиль',
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+}
+
+// ==================== MOVIE LIST ITEM ====================
+
+class MovieListItem extends StatelessWidget {
+  final Movie movie;
+  final bool isFavorite;
+  final VoidCallback onFavorite;
+  final bool isInCart;
+  final VoidCallback onCart;
+  final VoidCallback onTap;
+
+  const MovieListItem({
+    super.key,
+    required this.movie,
+    required this.isFavorite,
+    required this.onFavorite,
+    required this.isInCart,
+    required this.onCart,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(9),
+          child: Row(
+            children: [
+              MoviePoster(imageUrl: movie.imageUrl, width: 95, height: 125),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      movie.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text('${movie.genre} • ${movie.year}'),
+                    const SizedBox(height: 5),
+                    Text('${movie.duration} • ${movie.ageLimit}'),
+                    const SizedBox(height: 5),
+                    RatingRow(rating: movie.rating),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${movie.price} ₸',
+                      style: const TextStyle(
+                        color: Colors.deepOrange,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    onPressed: onFavorite,
+                    icon: Icon(
+                      isFavorite ? Icons.favorite : Icons.favorite_border,
+                      color: isFavorite ? Colors.red : Colors.grey,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: isInCart
+                        ? 'Удалить из корзины'
+                        : 'Добавить в корзину',
+                    onPressed: onCart,
+                    icon: Icon(
+                      isInCart
+                          ? Icons.remove_shopping_cart
+                          : Icons.add_shopping_cart,
+                      color: isInCart ? Colors.deepOrange : Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== MOVIE GRID ITEM ====================
+
+class MovieGridItem extends StatelessWidget {
+  final Movie movie;
+  final bool isFavorite;
+  final VoidCallback onFavorite;
+  final bool isInCart;
+  final VoidCallback onCart;
+  final VoidCallback onTap;
+
+  const MovieGridItem({
+    super.key,
+    required this.movie,
+    required this.isFavorite,
+    required this.onFavorite,
+    required this.isInCart,
+    required this.onCart,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  MoviePoster(
+                    imageUrl: movie.imageUrl,
+                    width: double.infinity,
+                    height: double.infinity,
+                  ),
+                  Positioned(
+                    right: 5,
+                    top: 5,
+                    child: CircleAvatar(
+                      backgroundColor: Colors.black54,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: onFavorite,
+                        icon: Icon(
+                          isFavorite ? Icons.favorite : Icons.favorite_border,
+                          color: isFavorite ? Colors.red : Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    movie.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(movie.genre, style: const TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      const Icon(Icons.star, color: Colors.amber, size: 16),
+                      const SizedBox(width: 3),
+                      Text('${movie.rating}'),
+                      const Spacer(),
+                      Text(
+                        '${movie.price} ₸',
+                        style: const TextStyle(
+                          color: Colors.deepOrange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 34,
+                          minHeight: 34,
+                        ),
+                        tooltip: isInCart
+                            ? 'Удалить из корзины'
+                            : 'Добавить в корзину',
+                        onPressed: onCart,
+                        icon: Icon(
+                          isInCart
+                              ? Icons.remove_shopping_cart
+                              : Icons.add_shopping_cart,
+                          color: isInCart ? Colors.deepOrange : Colors.grey,
+                          size: 20,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== CART SCREEN ====================
+
+class CartScreen extends StatelessWidget {
+  const CartScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<CartProvider>(
+      builder: (context, cart, child) {
+        return Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: Text('Корзина (${cart.itemCount})'),
+            actions: [
+              if (cart.items.isNotEmpty)
+                TextButton(
+                  onPressed: cart.clearCart,
+                  child: const Text(
+                    'Clear All',
+                    style: TextStyle(color: Colors.deepOrange),
+                  ),
+                ),
+            ],
+          ),
+          body: cart.items.isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.shopping_cart_outlined,
+                        size: 70,
+                        color: Colors.grey,
+                      ),
+                      SizedBox(height: 12),
+                      Text('Корзина пуста', style: TextStyle(fontSize: 19)),
+                    ],
+                  ),
+                )
+              : Column(
+                  children: [
+                    Expanded(
+                      child: ListView.separated(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: cart.items.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final movie = cart.items[index];
+                          return Card(
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.all(8),
+                              leading: MoviePoster(
+                                imageUrl: movie.imageUrl,
+                                width: 55,
+                                height: 75,
+                              ),
+                              title: Text(
+                                movie.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text('${movie.price} ₸'),
+                              trailing: IconButton(
+                                tooltip: 'Удалить',
+                                onPressed: () {
+                                  cart.removeFromCart(movie);
+                                },
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade900,
+                        border: Border(
+                          top: BorderSide(color: Colors.grey.shade800),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Total Price',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '${cart.totalPrice} ₸',
+                            style: const TextStyle(
+                              color: Colors.deepOrange,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+}
+
+// ==================== MOVIE DETAIL SCREEN ====================
+
+class MovieDetailScreen extends StatelessWidget {
+  final Movie movie;
+  final Subscription subscription;
+  final bool isFavorite;
+  final VoidCallback onFavorite;
+
+  const MovieDetailScreen({
+    super.key,
+    required this.movie,
+    required this.subscription,
+    required this.isFavorite,
+    required this.onFavorite,
+  });
+
+  Future<void> openTrailer() async {
+    final Uri url = Uri.parse(
+      'https://www.youtube.com/results?search_query=${Uri.encodeComponent(movie.title + ' trailer')}',
+    );
+
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  void watchMovie(BuildContext context) {
+    if (!subscription.isActive) {
+      showSubscriptionSheet(context, subscription);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => PlayerScreen(movie: movie)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('О фильме'),
+        actions: [
+          IconButton(
+            onPressed: onFavorite,
+            icon: Icon(
+              isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: isFavorite ? Colors.red : null,
+            ),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            MoviePoster(
+              imageUrl: movie.imageUrl,
+              width: double.infinity,
+              height: 330,
+            ),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    movie.title,
+                    style: const TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '${movie.genre} • ${movie.year} • ${movie.duration} • ${movie.ageLimit}',
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 12),
+                  RatingRow(rating: movie.rating),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Описание',
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(movie.description, style: const TextStyle(fontSize: 16)),
+                  const SizedBox(height: 25),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: openTrailer,
+                      icon: const Icon(Icons.play_circle_outline),
+                      label: const Text('Смотреть трейлер'),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => watchMovie(context),
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Смотреть фильм'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== SETTINGS SCREEN ====================
+
+class SettingsScreen extends StatefulWidget {
+  final Subscription subscription;
+
+  const SettingsScreen({super.key, required this.subscription});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  bool notifications = true;
+  bool autoplay = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Настройки'),
+      ),
+      body: ListView(
+        children: [
+          SwitchListTile(
+            title: const Text('Уведомления'),
+            subtitle: const Text('Получать новости и обновления'),
+            value: notifications,
+            onChanged: (value) {
+              setState(() {
+                notifications = value;
+              });
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Автовоспроизведение'),
+            subtitle: const Text('Автоматически запускать видео'),
+            value: autoplay,
+            onChanged: (value) {
+              setState(() {
+                autoplay = value;
+              });
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.card_membership),
+            title: const Text('Подписка KinoPass'),
+            subtitle: Text(
+              widget.subscription.isActive
+                  ? 'Активна • ${widget.subscription.daysLeft} дней осталось'
+                  : 'Не активна',
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              showSubscriptionSheet(context, widget.subscription);
+            },
+          ),
+          const AboutListTile(
+            icon: Icon(Icons.info_outline),
+            applicationName: 'KinoPass',
+            applicationVersion: '1.0.0',
+            applicationLegalese: '© 2026 KinoPass',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==================== SUBSCRIPTION BANNER ====================
+
+class SubscriptionBanner extends StatelessWidget {
+  final Subscription subscription;
+
+  const SubscriptionBanner({super.key, required this.subscription});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: subscription,
+      builder: (context, child) {
+        return Container(
+          margin: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Colors.deepOrange, Color(0xFF9C2700)],
+            ),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.movie_filter, size: 40, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      subscription.isActive
+                          ? 'Подписка активна'
+                          : 'KinoPass Premium',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subscription.isActive
+                          ? 'Осталось дней: ${subscription.daysLeft}'
+                          : 'Откройте доступ к просмотру фильмов',
+                    ),
+                  ],
+                ),
+              ),
+              if (!subscription.isActive)
+                TextButton(
+                  onPressed: () {
+                    showSubscriptionSheet(context, subscription);
+                  },
+                  child: const Text(
+                    'Подключить',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ==================== SUBSCRIPTION SHEET ====================
+
+void showSubscriptionSheet(BuildContext context, Subscription subscription) {
+  showModalBottomSheet(
+    context: context,
+    builder: (sheetContext) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.workspace_premium,
+              size: 55,
+              color: Colors.deepOrange,
+            ),
+            const SizedBox(height: 15),
+            const Text(
+              'KinoPass Premium',
+              style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            const Text('Доступ к просмотру фильмов на 14 дней'),
+            const SizedBox(height: 10),
+            const Text(
+              '3 ₸',
+              style: TextStyle(
+                fontSize: 26,
+                color: Colors.deepOrange,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  subscription.activate();
+                  Navigator.pop(sheetContext);
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Подписка успешно активирована!'),
+                    ),
+                  );
+                },
+                child: const Text('Активировать подписку'),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+// ==================== PLAYER SCREEN ====================
+
+class PlayerScreen extends StatelessWidget {
+  final Movie movie;
+
+  const PlayerScreen({super.key, required this.movie});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(movie.title),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.play_circle_outline,
+              size: 100,
+              color: Colors.deepOrange,
+            ),
+            const SizedBox(height: 15),
+            const Text('Видеоплеер KinoPass', style: TextStyle(fontSize: 20)),
+            const SizedBox(height: 8),
+            Text(movie.title, style: const TextStyle(color: Colors.grey)),
+            const SizedBox(height: 15),
+            const Text(
+              'Здесь будет воспроизводиться фильм',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== MOVIE POSTER ====================
+
+class MoviePoster extends StatelessWidget {
+  final String imageUrl;
+  final double width;
+  final double height;
+
+  const MoviePoster({
+    super.key,
+    required this.imageUrl,
+    required this.width,
+    required this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey.shade800,
+            child: const Center(
+              child: Icon(Icons.movie, size: 45, color: Colors.white54),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ==================== RATING ====================
+
+class RatingRow extends StatelessWidget {
+  final double rating;
+
+  const RatingRow({super.key, required this.rating});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.star, color: Colors.amber, size: 18),
+        const SizedBox(width: 4),
+        Text(
+          rating.toString(),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ],
+    );
+  }
+}
+
+// ==================== CLOUD PRODUCT EXPLORER ====================
+
+class Product {
+  final int id;
+  final String title;
+  final double price;
+  final String description;
+  final String category;
+  final String imageUrl;
+  final double rating;
+  final int reviewCount;
+
+  const Product({
+    required this.id,
+    required this.title,
+    required this.price,
+    required this.description,
+    required this.category,
+    required this.imageUrl,
+    required this.rating,
+    required this.reviewCount,
+  });
+
+  factory Product.fromJson(Map<String, dynamic> json) {
+    final ratingJson = json['rating'] is Map
+        ? Map<String, dynamic>.from(json['rating'] as Map)
+        : <String, dynamic>{};
+
+    return Product(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      title: json['title']?.toString() ?? 'Unknown product',
+      price: (json['price'] as num?)?.toDouble() ?? 0.0,
+      description:
+          json['description']?.toString() ?? 'No description available.',
+      category: json['category']?.toString() ?? 'Uncategorized',
+      imageUrl: json['image']?.toString() ?? '',
+      rating: (ratingJson['rate'] as num?)?.toDouble() ?? 0.0,
+      reviewCount: (ratingJson['count'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class ProductApiService {
+  static const String endpoint = 'https://fakestoreapi.com/products';
+
+  Future<List<Product>> fetchProducts() async {
+    final http.Response response;
+    try {
+      response = await http
+          .get(Uri.parse(endpoint))
+          .timeout(const Duration(seconds: 10));
+    } on TimeoutException {
+      throw Exception('The server took too long to respond (10 s timeout).');
+    } on http.ClientException {
+      throw Exception('No internet connection. Check Wi-Fi or mobile data.');
+    }
+
+    if (response.statusCode == 200) {
+      final Object? decoded;
+      try {
+        decoded = jsonDecode(response.body);
+      } on FormatException {
+        throw Exception('The server sent invalid data.');
+      }
+      if (decoded is! List) {
+        throw Exception('The server sent invalid data.');
+      }
+      return decoded
+          .map(
+            (item) => Product.fromJson(Map<String, dynamic>.from(item as Map)),
+          )
+          .toList();
+    } else if (response.statusCode == 404) {
+      throw Exception('Products were not found (404).');
+    } else if (response.statusCode >= 500) {
+      throw Exception('The server is unavailable (${response.statusCode}).');
+    } else {
+      throw Exception('Request failed (${response.statusCode}).');
+    }
+  }
+}
+
+class ProductExplorerScreen extends StatefulWidget {
+  const ProductExplorerScreen({super.key});
+
+  @override
+  State<ProductExplorerScreen> createState() => _ProductExplorerScreenState();
+}
+
+class _ProductExplorerScreenState extends State<ProductExplorerScreen> {
+  final ProductApiService apiService = ProductApiService();
+  late Future<List<Product>> productsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    productsFuture = apiService.fetchProducts();
+  }
+
+  void retryConnection() {
+    setState(() {
+      productsFuture = apiService.fetchProducts();
+    });
+  }
+
+  Future<void> refreshProducts() async {
+    retryConnection();
+    try {
+      await productsFuture;
+    } catch (_) {
+      // FutureBuilder displays the error state.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Cloud Product Explorer')),
+      body: FutureBuilder<List<Product>>(
+        future: productsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.wifi_off, size: 65, color: Colors.grey),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Connection problem',
+                      style: TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      snapshot.error.toString().replaceFirst('Exception: ', ''),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton.icon(
+                      onPressed: retryConnection,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry Connection'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          final products = snapshot.data ?? [];
+          if (products.isEmpty) {
+            return Center(
+              child: ElevatedButton(
+                onPressed: retryConnection,
+                child: const Text('Reload Products'),
+              ),
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: refreshProducts,
+            child: ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(12),
+              itemCount: products.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final product = products[index];
+                return Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.all(10),
+                    leading: Hero(
+                      tag: 'product_image_${product.id}',
+                      child: ProductImage(
+                        imageUrl: product.imageUrl,
+                        width: 75,
+                        height: 85,
+                      ),
+                    ),
+                    title: Text(
+                      product.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(product.category),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.star,
+                                color: Colors.amber,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${product.rating} (${product.reviewCount})',
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '\$${product.price.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              color: Colors.deepOrange,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              ProductDetailScreen(product: product),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class ProductDetailScreen extends StatefulWidget {
+  final Product product;
+
+  const ProductDetailScreen({super.key, required this.product});
+
+  @override
+  State<ProductDetailScreen> createState() => _ProductDetailScreenState();
+}
+
+class _ProductDetailScreenState extends State<ProductDetailScreen> {
+  final PageController pageController = PageController();
+  int currentPage = 0;
+
+  @override
+  void dispose() {
+    pageController.dispose();
+    super.dispose();
+  }
+
+  void showShareSheet() {
+    final deepLink = 'narxoz://store/product/${widget.product.id}';
+
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Share product',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 14),
+              SelectableText(deepLink),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: deepLink));
+                    if (sheetContext.mounted) Navigator.pop(sheetContext);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Deep link copied')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.copy),
+                  label: const Text('Copy link'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final product = widget.product;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Product Details'),
+        actions: [
+          IconButton(
+            tooltip: 'Share product',
+            onPressed: showShareSheet,
+            icon: const Icon(Icons.share_outlined),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 310,
+              child: Stack(
+                alignment: Alignment.bottomCenter,
+                children: [
+                  PageView.builder(
+                    controller: pageController,
+                    itemCount: 3,
+                    onPageChanged: (page) {
+                      setState(() => currentPage = page);
+                    },
+                    itemBuilder: (context, index) {
+                      return Center(
+                        child: Hero(
+                          tag: index == 0
+                              ? 'product_image_${product.id}'
+                              : 'product_image_${product.id}_page_$index',
+                          child: ProductImage(
+                            imageUrl: product.imageUrl,
+                            width: double.infinity,
+                            height: 270,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  Positioned(
+                    right: 16,
+                    bottom: 42,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text('${currentPage + 1} / 3'),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 14,
+                    child: Row(
+                      children: List.generate(3, (index) {
+                        final selected = currentPage == index;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          width: selected ? 22 : 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: selected ? Colors.deepOrange : Colors.grey,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.deepOrange.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      product.category,
+                      style: const TextStyle(color: Colors.deepOrange),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    product.title,
+                    style: const TextStyle(
+                      fontSize: 23,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(Icons.star, color: Colors.amber),
+                      const SizedBox(width: 5),
+                      Text('${product.rating} / 5'),
+                      const SizedBox(width: 8),
+                      Text(
+                        '(${product.reviewCount} reviews)',
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '\$${product.price.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      color: Colors.deepOrange,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  const Text(
+                    'Description',
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    product.description,
+                    style: const TextStyle(fontSize: 16, height: 1.5),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: SizedBox(
+            height: 52,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                context.read<CartProvider>().addProductToCart(product);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Product added to cart')),
+                );
+              },
+              icon: const Icon(Icons.shopping_cart_outlined),
+              label: const Text('Add to Cart'),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ProductImage extends StatelessWidget {
+  final String imageUrl;
+  final double width;
+  final double height;
+
+  const ProductImage({
+    super.key,
+    required this.imageUrl,
+    required this.width,
+    required this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (imageUrl.isEmpty) {
+      return SizedBox(
+        width: width,
+        height: height,
+        child: const Center(child: Icon(Icons.image_not_supported)),
+      );
+    }
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Image.network(
+        imageUrl,
+        width: width,
+        height: height,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            width: width,
+            height: height,
+            color: Colors.grey.shade800,
+            child: const Icon(Icons.image_not_supported, size: 40),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ==================== LW11: LOCAL DATA STORAGE ====================
+class NoteItem {
+  final String id;
+  final String title;
+  final String dateText;
+  final bool isCompleted;
+
+  const NoteItem({
+    required this.id,
+    required this.title,
+    required this.dateText,
+    required this.isCompleted,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'dateText': dateText,
+    'isCompleted': isCompleted,
+  };
+
+  factory NoteItem.fromJson(Map<String, dynamic> json) {
+    return NoteItem(
+      id:
+          json['id']?.toString() ??
+          DateTime.now().microsecondsSinceEpoch.toString(),
+      title: json['title']?.toString() ?? 'Untitled note',
+      dateText: json['dateText']?.toString() ?? '',
+      isCompleted: json['isCompleted'] as bool? ?? false,
+    );
+  }
+
+  NoteItem copyWith({bool? isCompleted}) => NoteItem(
+    id: id,
+    title: title,
+    dateText: dateText,
+    isCompleted: isCompleted ?? this.isCompleted,
+  );
+}
+
+class NotesVaultScreen extends StatefulWidget {
+  final bool isDarkMode;
+  final ValueChanged<bool> onThemeChanged;
+
+  const NotesVaultScreen({
+    super.key,
+    required this.isDarkMode,
+    required this.onThemeChanged,
+  });
+
+  @override
+  State<NotesVaultScreen> createState() => _NotesVaultScreenState();
+}
+
+class _NotesVaultScreenState extends State<NotesVaultScreen> {
+  static const String _themeKey = 'app_theme_dark_mode';
+  static const String _nameKey = 'user_display_name';
+  static const String _notesKey = 'saved_notes_list';
+
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _noteController = TextEditingController();
+  List<NoteItem> _notes = [];
+  String _displayName = 'Guest User';
+  bool _isLoading = true;
+  late bool _darkMode = widget.isDarkMode;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedData();
+  }
+
+  Future<void> _loadSavedData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedName = prefs.getString(_nameKey) ?? 'Guest User';
+    final savedNotes = prefs.getString(_notesKey);
+    List<NoteItem> loadedNotes = [];
+
+    if (savedNotes != null && savedNotes.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(savedNotes) as List<dynamic>;
+        loadedNotes = decoded
+            .map(
+              (item) =>
+                  NoteItem.fromJson(Map<String, dynamic>.from(item as Map)),
+            )
+            .toList();
+      } catch (error) {
+        debugPrint('Could not read saved notes: $error');
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _displayName = savedName;
+      _nameController.text = savedName == 'Guest User' ? '' : savedName;
+      _notes = loadedNotes;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _saveName() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter a username')));
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_nameKey, name);
+    if (!mounted) return;
+    setState(() => _displayName = name);
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Username saved')));
+  }
+
+  Future<void> _saveNotes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = jsonEncode(_notes.map((note) => note.toJson()).toList());
+    await prefs.setString(_notesKey, jsonString);
+  }
+
+  Future<void> _addNote() async {
+    final title = _noteController.text.trim();
+    if (title.isEmpty) return;
+    final now = DateTime.now();
+    final dateText =
+        '${now.day.toString().padLeft(2, '0')}.${now.month.toString().padLeft(2, '0')}.${now.year}';
+    setState(() {
+      _notes.insert(
+        0,
+        NoteItem(
+          id: now.microsecondsSinceEpoch.toString(),
+          title: title,
+          dateText: dateText,
+          isCompleted: false,
+        ),
+      );
+      _noteController.clear();
+    });
+    await _saveNotes();
+  }
+
+  Future<void> _toggleNote(NoteItem note, bool value) async {
+    setState(() {
+      final index = _notes.indexWhere((item) => item.id == note.id);
+      if (index != -1) _notes[index] = note.copyWith(isCompleted: value);
+    });
+    await _saveNotes();
+  }
+
+  Future<void> _deleteNote(NoteItem note) async {
+    setState(() => _notes.removeWhere((item) => item.id == note.id));
+    await _saveNotes();
+  }
+
+  Future<void> _changeTheme(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_themeKey, value);
+    widget.onThemeChanged(value);
+    if (mounted) setState(() => _darkMode = value);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Offline Notes & Settings Vault')),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SafeArea(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Hello, $_displayName!',
+                            style: Theme.of(context).textTheme.headlineSmall,
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _nameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Username',
+                              hintText: 'Enter your name',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _saveName,
+                              icon: const Icon(Icons.save_outlined),
+                              label: const Text('Save username'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: SwitchListTile(
+                      secondary: Icon(
+                        _darkMode ? Icons.dark_mode : Icons.light_mode,
+                      ),
+                      title: const Text('Dark Mode'),
+                      subtitle: const Text('Theme is saved on this device'),
+                      value: _darkMode,
+                      onChanged: _changeTheme,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'My Notes',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _noteController,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _addNote(),
+                          decoration: const InputDecoration(
+                            hintText: 'Write a new note...',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filled(
+                        onPressed: _addNote,
+                        icon: const Icon(Icons.add),
+                        tooltip: 'Add note',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (_notes.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 30),
+                      child: Center(
+                        child: Text('No notes yet. Add your first note.'),
+                      ),
+                    )
+                  else
+                    ..._notes.map(
+                      (note) => Card(
+                        child: ListTile(
+                          leading: Checkbox(
+                            value: note.isCompleted,
+                            onChanged: (value) =>
+                                _toggleNote(note, value ?? false),
+                          ),
+                          title: Text(
+                            note.title,
+                            style: TextStyle(
+                              decoration: note.isCompleted
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              color: note.isCompleted
+                                  ? Theme.of(context).disabledColor
+                                  : null,
+                            ),
+                          ),
+                          subtitle: Text(note.dateText),
+                          trailing: IconButton(
+                            tooltip: 'Delete note',
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.redAccent,
+                            ),
+                            onPressed: () => _deleteNote(note),
+                          ),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Notes are stored locally as one JSON string. They remain available after closing and reopening the app.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+// ==================== LAB 12: BLOC SHOP - AUTH STATES ====================
+
+abstract class AuthState extends Equatable {
+  const AuthState();
+
+  @override
+  List<Object?> get props => [];
+}
+
+class AuthInitial extends AuthState {
+  const AuthInitial();
+}
+
+class AuthLoading extends AuthState {
+  const AuthLoading();
+}
+
+class AuthSuccess extends AuthState {
+  final String username;
+  final String email;
+
+  const AuthSuccess({required this.username, required this.email});
+
+  @override
+  List<Object?> get props => [username, email];
+}
+
+class AuthError extends AuthState {
+  final String message;
+
+  const AuthError(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+
+// ==================== LAB 12: BLOC SHOP - AUTH CUBIT ====================
+
+class AuthCubit extends Cubit<AuthState> {
+  static const String demoEmail = 'student@narxoz.kz';
+  static const String demoPassword = '123456';
+
+  AuthCubit() : super(const AuthInitial());
+
+  Future<void> login(String email, String password) async {
+    // Ignore new taps while the "server" is still answering
+    if (state is AuthLoading) return;
+
+    // Reset an old error first: Equatable skips an identical state,
+    // so the same error twice in a row would not show a SnackBar again
+    if (state is AuthError) emit(const AuthInitial());
+
+    final cleanEmail = email.trim().toLowerCase();
+
+    if (cleanEmail.isEmpty && password.isEmpty) {
+      emit(const AuthError('Please enter email and password'));
+      return;
+    }
+    if (cleanEmail.isEmpty) {
+      emit(const AuthError('Please enter your email'));
+      return;
+    }
+    if (password.isEmpty) {
+      emit(const AuthError('Please enter your password'));
+      return;
+    }
+
+    emit(const AuthLoading());
+
+    // Simulated server request
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (isClosed) return;
+
+    if (cleanEmail == demoEmail && password == demoPassword) {
+      emit(
+        AuthSuccess(username: cleanEmail.split('@').first, email: cleanEmail),
+      );
+    } else {
+      emit(const AuthError('Invalid email or password'));
+    }
+  }
+
+  void logout() {
+    emit(const AuthInitial());
+  }
+}
+
+// ==================== LAB 12: BLOC SHOP - PRODUCTS ====================
+
+class ShopProduct extends Equatable {
+  final int id;
+  final String name;
+  final int price;
+  final IconData icon;
+
+  const ShopProduct({
+    required this.id,
+    required this.name,
+    required this.price,
+    required this.icon,
+  });
+
+  @override
+  List<Object?> get props => [id, name, price];
+}
+
+const List<ShopProduct> shopProducts = [
+  ShopProduct(id: 1, name: 'Popcorn', price: 1500, icon: Icons.fastfood),
+  ShopProduct(id: 2, name: 'Coca-Cola', price: 700, icon: Icons.local_drink),
+  ShopProduct(id: 3, name: 'Nachos', price: 1800, icon: Icons.restaurant),
+  ShopProduct(id: 4, name: 'Hot Dog', price: 1300, icon: Icons.lunch_dining),
+  ShopProduct(id: 5, name: '3D Glasses', price: 1000, icon: Icons.visibility),
+  ShopProduct(id: 6, name: 'Movie Poster', price: 2500, icon: Icons.image),
+  ShopProduct(
+    id: 7,
+    name: 'KinoPass T-Shirt',
+    price: 6500,
+    icon: Icons.checkroom,
+  ),
+  ShopProduct(id: 8, name: 'Gift Card', price: 5000, icon: Icons.card_giftcard),
+];
+
+String formatTenge(int amount) => '$amount ₸';
+
+// ==================== LAB 12: BLOC SHOP - CART BLOC ====================
+
+class ShopCartItem extends Equatable {
+  final ShopProduct product;
+  final int quantity;
+
+  const ShopCartItem({required this.product, required this.quantity});
+
+  int get lineTotal => product.price * quantity;
+
+  @override
+  List<Object?> get props => [product, quantity];
+}
+
+abstract class ShopCartEvent extends Equatable {
+  const ShopCartEvent();
+
+  @override
+  List<Object?> get props => [];
+}
+
+class AddProductEvent extends ShopCartEvent {
+  final ShopProduct product;
+
+  const AddProductEvent(this.product);
+
+  @override
+  List<Object?> get props => [product];
+}
+
+class RemoveProductEvent extends ShopCartEvent {
+  final ShopProduct product;
+
+  const RemoveProductEvent(this.product);
+
+  @override
+  List<Object?> get props => [product];
+}
+
+class ClearCartEvent extends ShopCartEvent {
+  const ClearCartEvent();
+}
+
+class ShopCartState extends Equatable {
+  final List<ShopCartItem> items;
+  final int totalPrice;
+  final int count;
+
+  const ShopCartState({
+    this.items = const [],
+    this.totalPrice = 0,
+    this.count = 0,
+  });
+
+  factory ShopCartState.fromItems(List<ShopCartItem> items) {
+    int total = 0;
+    int count = 0;
+    for (final item in items) {
+      total += item.lineTotal;
+      count += item.quantity;
+    }
+    return ShopCartState(
+      items: List.unmodifiable(items),
+      totalPrice: total,
+      count: count,
+    );
+  }
+
+  @override
+  List<Object?> get props => [items, totalPrice, count];
+}
+
+class ShopCartBloc extends Bloc<ShopCartEvent, ShopCartState> {
+  ShopCartBloc() : super(const ShopCartState()) {
+    on<AddProductEvent>(_onAdd);
+    on<RemoveProductEvent>(_onRemove);
+    on<ClearCartEvent>(_onClear);
+  }
+
+  void _onAdd(AddProductEvent event, Emitter<ShopCartState> emit) {
+    final items = List<ShopCartItem>.from(state.items);
+    final index = items.indexWhere(
+      (item) => item.product.id == event.product.id,
+    );
+
+    if (index == -1) {
+      items.add(ShopCartItem(product: event.product, quantity: 1));
+    } else {
+      final old = items[index];
+      items[index] = ShopCartItem(
+        product: old.product,
+        quantity: old.quantity + 1,
+      );
+    }
+    emit(ShopCartState.fromItems(items));
+  }
+
+  void _onRemove(RemoveProductEvent event, Emitter<ShopCartState> emit) {
+    final items = state.items
+        .where((item) => item.product.id != event.product.id)
+        .toList();
+    emit(ShopCartState.fromItems(items));
+  }
+
+  void _onClear(ClearCartEvent event, Emitter<ShopCartState> emit) {
+    emit(const ShopCartState());
+  }
+}
+
+// ==================== LAB 12: BLOC SHOP - LOGIN SCREEN ====================
+
+class ShopLoginScreen extends StatefulWidget {
+  const ShopLoginScreen({super.key});
+
+  @override
+  State<ShopLoginScreen> createState() => _ShopLoginScreenState();
+}
+
+class _ShopLoginScreenState extends State<ShopLoginScreen> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _hidePassword = true;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  void _login() {
+    FocusScope.of(context).unfocus();
+    context.read<AuthCubit>().login(
+      _emailController.text,
+      _passwordController.text,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Enterprise Login')),
+      body: BlocConsumer<AuthCubit, AuthState>(
+        listener: (context, state) {
+          if (state is AuthError) {
+            ScaffoldMessenger.of(context)
+              ..hideCurrentSnackBar()
+              ..showSnackBar(
+                SnackBar(
+                  content: Text(state.message),
+                  backgroundColor: Colors.red,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+          } else if (state is AuthSuccess) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const ShopCatalogScreen(),
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          final isLoading = state is AuthLoading;
+
+          return ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              const Icon(Icons.lock_person, size: 72, color: Colors.deepOrange),
+              const SizedBox(height: 16),
+              const Text(
+                'Sign in to KinoPass Shop',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                controller: _emailController,
+                enabled: !isLoading,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _passwordController,
+                enabled: !isLoading,
+                obscureText: _hidePassword,
+                onSubmitted: (_) => _login(),
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _hidePassword ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() => _hidePassword = !_hidePassword);
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                height: 50,
+                child: isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : FilledButton(
+                        onPressed: _login,
+                        child: const Text('Login'),
+                      ),
+              ),
+              const SizedBox(height: 24),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'Demo account',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 4),
+                      Text('Email: ${AuthCubit.demoEmail}'),
+                      Text('Password: ${AuthCubit.demoPassword}'),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ==================== LAB 12: BLOC SHOP - CATALOG SCREEN ====================
+
+class ShopCatalogScreen extends StatelessWidget {
+  const ShopCatalogScreen({super.key});
+
+  void _logout(BuildContext context) {
+    context.read<AuthCubit>().logout();
+    context.read<ShopCartBloc>().add(const ClearCartEvent());
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const ShopLoginScreen()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = context.watch<AuthCubit>().state;
+    final username = authState is AuthSuccess ? authState.username : 'Guest';
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('BLoC Shop'),
+        actions: [
+          BlocBuilder<ShopCartBloc, ShopCartState>(
+            builder: (context, cartState) {
+              return IconButton(
+                tooltip: 'Shop cart',
+                icon: Badge(
+                  isLabelVisible: cartState.count > 0,
+                  label: Text('${cartState.count}'),
+                  child: const Icon(Icons.shopping_cart_outlined),
+                ),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ShopCartScreen(),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          IconButton(
+            tooltip: 'Logout',
+            icon: const Icon(Icons.logout),
+            onPressed: () => _logout(context),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Welcome, $username!',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: shopProducts.length,
+              itemBuilder: (context, index) {
+                final product = shopProducts[index];
+                return Card(
+                  child: ListTile(
+                    leading: CircleAvatar(child: Icon(product.icon)),
+                    title: Text(product.name),
+                    subtitle: Text(formatTenge(product.price)),
+                    trailing: FilledButton.tonal(
+                      key: ValueKey('shop_add_${product.id}'),
+                      onPressed: () {
+                        context.read<ShopCartBloc>().add(
+                          AddProductEvent(product),
+                        );
+                        ScaffoldMessenger.of(context)
+                          ..hideCurrentSnackBar()
+                          ..showSnackBar(
+                            SnackBar(
+                              content: Text('${product.name} added to cart'),
+                              duration: const Duration(seconds: 1),
+                            ),
+                          );
+                      },
+                      child: const Text('Add'),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==================== LAB 12: BLOC SHOP - CART SCREEN ====================
+
+class ShopCartScreen extends StatelessWidget {
+  const ShopCartScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<ShopCartBloc, ShopCartState>(
+      builder: (context, state) {
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Shop Cart'),
+            actions: [
+              if (state.items.isNotEmpty)
+                TextButton(
+                  onPressed: () {
+                    context.read<ShopCartBloc>().add(const ClearCartEvent());
+                  },
+                  child: const Text('Clear All'),
+                ),
+            ],
+          ),
+          body: state.items.isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.remove_shopping_cart_outlined, size: 72),
+                      SizedBox(height: 12),
+                      Text('Your cart is empty'),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: state.items.length,
+                  itemBuilder: (context, index) {
+                    final item = state.items[index];
+                    return Card(
+                      child: ListTile(
+                        leading: CircleAvatar(child: Icon(item.product.icon)),
+                        title: Text(item.product.name),
+                        subtitle: Text(
+                          '${item.quantity} x ${formatTenge(item.product.price)}'
+                          ' = ${formatTenge(item.lineTotal)}',
+                        ),
+                        trailing: IconButton(
+                          tooltip: 'Remove',
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () {
+                            context.read<ShopCartBloc>().add(
+                              RemoveProductEvent(item.product),
+                            );
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+          bottomNavigationBar: state.items.isEmpty
+              ? null
+              : SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Items: ${state.count}',
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                        const Spacer(),
+                        // Shrinks a long total on narrow phones instead of overflowing
+                        Flexible(
+                          flex: 3,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Total: ${formatTenge(state.totalPrice)}',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+        );
+      },
+    );
+  }
+}
+
+// ==================== LW13: GEOTAGGED PHOTO DIARY ====================
+
+// One GPS reading that we attach to a diary entry.
+class DiaryGeoFix {
+  final double latitude;
+  final double longitude;
+  final double accuracy;
+  final double altitude;
+  final DateTime timestamp;
+
+  const DiaryGeoFix({
+    required this.latitude,
+    required this.longitude,
+    required this.accuracy,
+    required this.altitude,
+    required this.timestamp,
+  });
+
+  factory DiaryGeoFix.fromPosition(Position position) {
+    return DiaryGeoFix(
+      latitude: position.latitude,
+      longitude: position.longitude,
+      accuracy: position.accuracy,
+      altitude: position.altitude,
+      timestamp: position.timestamp,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'latitude': latitude,
+    'longitude': longitude,
+    'accuracy': accuracy,
+    'altitude': altitude,
+    'timestamp': timestamp.millisecondsSinceEpoch,
+  };
+
+  factory DiaryGeoFix.fromJson(Map<String, dynamic> json) {
+    return DiaryGeoFix(
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
+      accuracy: (json['accuracy'] as num?)?.toDouble() ?? 0,
+      altitude: (json['altitude'] as num?)?.toDouble() ?? 0,
+      timestamp: DateTime.fromMillisecondsSinceEpoch(
+        (json['timestamp'] as num?)?.toInt() ?? 0,
+      ),
+    );
+  }
+}
+
+// One diary entry. On mobile [photo] is a file name inside
+// <documents>/photos, on web it is a data: URL with the picture bytes.
+class DiaryEntry {
+  final String id;
+  final String caption;
+  final String? photo;
+  final DiaryGeoFix? location;
+  final DateTime createdAt;
+
+  const DiaryEntry({
+    required this.id,
+    required this.caption,
+    required this.photo,
+    required this.location,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'caption': caption,
+    'photo': photo,
+    'location': location?.toJson(),
+    'createdAt': createdAt.millisecondsSinceEpoch,
+  };
+
+  factory DiaryEntry.fromJson(Map<String, dynamic> json) {
+    final location = json['location'];
+    return DiaryEntry(
+      id:
+          json['id']?.toString() ??
+          DateTime.now().microsecondsSinceEpoch.toString(),
+      caption: json['caption']?.toString() ?? '',
+      photo: json['photo']?.toString(),
+      location: location is Map
+          ? DiaryGeoFix.fromJson(Map<String, dynamic>.from(location))
+          : null,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(
+        (json['createdAt'] as num?)?.toInt() ?? 0,
+      ),
+    );
+  }
+}
+
+// '43.2389° N, 76.8897° E'
+String diaryFormatCoordinates(double latitude, double longitude) {
+  final latText =
+      '${latitude.abs().toStringAsFixed(4)}° ${latitude >= 0 ? 'N' : 'S'}';
+  final lonText =
+      '${longitude.abs().toStringAsFixed(4)}° ${longitude >= 0 ? 'E' : 'W'}';
+  return '$latText, $lonText';
+}
+
+// '28.11.2026 14:05' (same day.month.year style as the notes vault)
+String diaryFormatDateTime(DateTime value) {
+  final time = value.toLocal(); // GPS timestamps come in UTC
+  String two(int value) => value.toString().padLeft(2, '0');
+  return '${two(time.day)}.${two(time.month)}.${time.year} '
+      '${two(time.hour)}:${two(time.minute)}';
+}
+
+// Saving and loading entries + photo files.
+class DiaryStorage {
+  static const String entriesKey = 'photo_diary_entries';
+
+  static Future<List<DiaryEntry>> loadEntries() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(entriesKey);
+    if (saved == null || saved.isEmpty) return [];
+    try {
+      final decoded = jsonDecode(saved) as List<dynamic>;
+      return decoded
+          .map(
+            (item) =>
+                DiaryEntry.fromJson(Map<String, dynamic>.from(item as Map)),
+          )
+          .toList();
+    } catch (error) {
+      debugPrint('Could not read diary entries: $error');
+      return [];
+    }
+  }
+
+  static Future<bool> saveEntries(List<DiaryEntry> entries) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonString = jsonEncode(
+        entries.map((entry) => entry.toJson()).toList(),
+      );
+      return await prefs.setString(entriesKey, jsonString);
+    } catch (error) {
+      // On web localStorage has a small limit (about 5 MB).
+      debugPrint('Could not save diary entries: $error');
+      return false;
+    }
+  }
+
+  // Full path of the photos folder. We only save the file name in the
+  // entry, because the app container path changes on iOS after updates.
+  static Future<String?> photosFolder() async {
+    if (kIsWeb) return null;
+    try {
+      final documents = await getApplicationDocumentsDirectory();
+      return '${documents.path}/photos';
+    } catch (error) {
+      debugPrint('Documents folder is not available: $error');
+      return null;
+    }
+  }
+
+  static Future<String> copyPhoto(XFile photo, String id) async {
+    final folder = await photosFolder();
+    if (folder == null) throw Exception('Documents folder is not available');
+    await Directory(folder).create(recursive: true);
+    final fileName = '$id.jpg';
+    await File(photo.path).copy('$folder/$fileName');
+    return fileName;
+  }
+
+  static Future<void> deletePhoto(DiaryEntry entry) async {
+    final photo = entry.photo;
+    if (kIsWeb || photo == null || photo.startsWith('data:')) return;
+    try {
+      final folder = await photosFolder();
+      if (folder == null) return;
+      final file = File('$folder/$photo');
+      if (await file.exists()) await file.delete();
+    } catch (error) {
+      debugPrint('Could not delete photo: $error');
+    }
+  }
+}
+
+// Shows a saved photo (file name / data URL) or a camera placeholder.
+class DiaryPhotoView extends StatelessWidget {
+  final String? photo;
+  final String? photosFolder;
+  final double iconSize;
+
+  const DiaryPhotoView({
+    super.key,
+    required this.photo,
+    required this.photosFolder,
+    this.iconSize = 32,
+  });
+
+  Widget _placeholder(BuildContext context) {
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.photo_camera_outlined,
+        size: iconSize,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = photo;
+    if (value == null || value.isEmpty) return _placeholder(context);
+
+    if (value.startsWith('data:')) {
+      try {
+        return Image.memory(
+          UriData.parse(value).contentAsBytes(),
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _placeholder(context),
+        );
+      } catch (_) {
+        return _placeholder(context);
+      }
+    }
+
+    if (kIsWeb || photosFolder == null) return _placeholder(context);
+
+    return Image.file(
+      File('$photosFolder/$value'),
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => _placeholder(context),
+    );
+  }
+}
+
+// ---------- Diary feed ----------
+
+class PhotoDiaryScreen extends StatefulWidget {
+  const PhotoDiaryScreen({super.key});
+
+  @override
+  State<PhotoDiaryScreen> createState() => _PhotoDiaryScreenState();
+}
+
+class _PhotoDiaryScreenState extends State<PhotoDiaryScreen> {
+  List<DiaryEntry> _entries = [];
+  String? _photosFolder;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEntries();
+  }
+
+  Future<void> _loadEntries() async {
+    final entries = await DiaryStorage.loadEntries();
+    if (!mounted) return;
+    setState(() {
+      _entries = entries;
+      _isLoading = false;
+    });
+
+    // The photos folder is only needed for thumbnails, so the list
+    // is shown first and the pictures appear when the path is ready.
+    final folder = await DiaryStorage.photosFolder();
+    if (!mounted || folder == null) return;
+    setState(() => _photosFolder = folder);
+  }
+
+  Future<bool> _saveEntries() async {
+    final saved = await DiaryStorage.saveEntries(_entries);
+    if (!saved && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not save the diary. Storage may be full.'),
+        ),
+      );
+    }
+    return saved;
+  }
+
+  Future<void> _openNewEntry() async {
+    final entry = await Navigator.push<DiaryEntry>(
+      context,
+      MaterialPageRoute(builder: (context) => const DiaryNewEntryScreen()),
+    );
+    if (entry == null || !mounted) return;
+    setState(() => _entries.insert(0, entry));
+    final saved = await _saveEntries();
+    if (!saved || !mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Entry saved')));
+  }
+
+  Future<void> _openDetails(DiaryEntry entry) async {
+    final deleted = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            DiaryEntryDetailScreen(entry: entry, photosFolder: _photosFolder),
+      ),
+    );
+    if (deleted != true || !mounted) return;
+    setState(() => _entries.removeWhere((item) => item.id == entry.id));
+    await _saveEntries();
+    await DiaryStorage.deletePhoto(entry);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Entry deleted')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Photo Diary')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openNewEntry,
+        icon: const Icon(Icons.add_a_photo_outlined),
+        label: const Text('New Entry'),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _entries.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.photo_library_outlined,
+                      size: 72,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No diary entries yet',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Take a photo, add your location and save your first memory.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+              itemCount: _entries.length,
+              itemBuilder: (context, index) {
+                final entry = _entries[index];
+                final location = entry.location;
+                return Card(
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.all(10),
+                    onTap: () => _openDetails(entry),
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: SizedBox(
+                        width: 64,
+                        height: 64,
+                        child: DiaryPhotoView(
+                          photo: entry.photo,
+                          photosFolder: _photosFolder,
+                          iconSize: 26,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      entry.caption.isEmpty ? 'Untitled entry' : entry.caption,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      '${location == null ? 'No location' : diaryFormatCoordinates(location.latitude, location.longitude)}\n'
+                      '${diaryFormatDateTime(entry.createdAt)}',
+                    ),
+                    isThreeLine: true,
+                    trailing: const Icon(Icons.chevron_right),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+}
+
+// ---------- Entry details ----------
+
+class DiaryEntryDetailScreen extends StatelessWidget {
+  final DiaryEntry entry;
+  final String? photosFolder;
+
+  const DiaryEntryDetailScreen({
+    super.key,
+    required this.entry,
+    required this.photosFolder,
+  });
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete entry?'),
+        content: const Text('This photo and its location will be removed.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      Navigator.pop(context, true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final location = entry.location;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Diary Entry'),
+        actions: [
+          IconButton(
+            tooltip: 'Delete entry',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _confirmDelete(context),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: AspectRatio(
+              aspectRatio: 4 / 3,
+              child: DiaryPhotoView(
+                photo: entry.photo,
+                photosFolder: photosFolder,
+                iconSize: 64,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            entry.caption.isEmpty ? 'Untitled entry' : entry.caption,
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.schedule),
+                  title: const Text('Saved'),
+                  subtitle: Text(diaryFormatDateTime(entry.createdAt)),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.place_outlined),
+                  title: const Text('Location'),
+                  subtitle: Text(
+                    location == null
+                        ? 'No location saved'
+                        : diaryFormatCoordinates(
+                            location.latitude,
+                            location.longitude,
+                          ),
+                  ),
+                ),
+                if (location != null) ...[
+                  ListTile(
+                    leading: const Icon(Icons.gps_fixed),
+                    title: const Text('Accuracy'),
+                    subtitle: Text(
+                      '± ${location.accuracy.toStringAsFixed(1)} m',
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.terrain_outlined),
+                    title: const Text('Altitude'),
+                    subtitle: Text('${location.altitude.toStringAsFixed(1)} m'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------- New entry: photo + GPS + caption ----------
+
+class DiaryNewEntryScreen extends StatefulWidget {
+  const DiaryNewEntryScreen({super.key});
+
+  @override
+  State<DiaryNewEntryScreen> createState() => _DiaryNewEntryScreenState();
+}
+
+class _DiaryNewEntryScreenState extends State<DiaryNewEntryScreen> {
+  final ImagePicker _picker = ImagePicker();
+  final TextEditingController _captionController = TextEditingController();
+
+  XFile? _photo;
+  String? _webPhotoData; // data: URL, only used on web
+  DiaryGeoFix? _location;
+  bool _isLocating = false;
+  bool _isSaving = false;
+
+  @override
+  void dispose() {
+    _captionController.dispose();
+    super.dispose();
+  }
+
+  void _showMessage(String text, {SnackBarAction? action}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(text),
+        behavior: SnackBarBehavior.floating,
+        action: action,
+      ),
+    );
+  }
+
+  Future<void> _showSettingsDialog({
+    required String title,
+    required String message,
+    required Future<bool> Function() openSettings,
+  }) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // openSettings can throw (for example on web), never crash.
+              Future.sync(openSettings).catchError((Object error) {
+                debugPrint('Could not open settings: $error');
+                return false;
+              });
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ----- Task 1: permissions for camera / photos -----
+
+  Future<bool> _checkPhotoPermission(ImageSource source) async {
+    // permission_handler does not work on web, the browser asks by itself.
+    if (kIsWeb) return true;
+
+    try {
+      if (source == ImageSource.camera) {
+        final status = await Permission.camera.request();
+        if (status.isGranted || status.isLimited) return true;
+        if (status.isPermanentlyDenied) {
+          await _showSettingsDialog(
+            title: 'Camera access is off',
+            message: 'Camera permission was denied permanently. Please allow it in Settings to take photos.',
+            openSettings: openAppSettings,
+          );
+        } else {
+          _showMessage(
+            'Camera permission denied',
+            action: SnackBarAction(
+              label: 'Try again',
+              onPressed: () => _pickPhoto(ImageSource.camera),
+            ),
+          );
+        }
+        return false;
+      }
+
+      // Gallery: the system Photo Picker (Android) / PHPicker (iOS) works
+      // without this permission, so we only explain and still open it.
+      final status = await Permission.photos.request();
+      if (!status.isGranted && !status.isLimited) {
+        _showMessage(
+          'No full photo access. The system picker will still let you choose a photo.',
+        );
+      }
+      return true;
+    } catch (error) {
+      debugPrint('Permission check failed: $error');
+      return true;
+    }
+  }
+
+  // ----- Task 2: capture -----
+
+  Future<void> _pickPhoto(ImageSource source) async {
+    // 'Try again' in a SnackBar can be tapped after this screen is closed.
+    if (!mounted) return;
+    final allowed = await _checkPhotoPermission(source);
+    if (!allowed) return;
+
+    XFile? picked;
+    try {
+      picked = await _picker.pickImage(
+        source: source,
+        imageQuality: 80,
+        maxWidth: 1080,
+      );
+    } catch (error) {
+      debugPrint('Image picker error: $error');
+      _showMessage(
+        source == ImageSource.camera
+            ? 'Could not open the camera on this device'
+            : 'Could not open the gallery',
+      );
+      return;
+    }
+    if (picked == null) return; // user closed the picker
+
+    String? webData;
+    if (kIsWeb) {
+      final bytes = await picked.readAsBytes();
+      webData =
+          'data:${picked.mimeType ?? 'image/jpeg'};base64,${base64Encode(bytes)}';
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _photo = picked;
+      _webPhotoData = webData;
+    });
+
+    // After a new camera photo we tag it with the current location.
+    if (source == ImageSource.camera) {
+      await _fetchLocation();
+    }
+  }
+
+  void _showPhotoSourceSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickPhoto(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickPhoto(ImageSource.gallery);
+              },
+            ),
+            if (_photo != null)
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.redAccent,
+                ),
+                title: const Text('Remove photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _photo = null;
+                    _webPhotoData = null;
+                  });
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ----- Task 3: GPS -----
+
+  Future<void> _fetchLocation() async {
+    if (!mounted || _isLocating) return;
+    setState(() => _isLocating = true);
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        await _showSettingsDialog(
+          title: 'Location is turned off',
+          message: 'Turn on location services (GPS) to tag your photo. You can also save the entry without coordinates.',
+          openSettings: Geolocator.openLocationSettings,
+        );
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied) {
+        _showMessage(
+          'Location permission denied. The entry can be saved without coordinates.',
+          action: SnackBarAction(label: 'Try again', onPressed: _fetchLocation),
+        );
+        return;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        // A browser has no app settings page: geolocator_web throws there.
+        if (kIsWeb) {
+          _showMessage(
+            'Location is blocked for this site. Allow it in the browser address bar. The entry can be saved without coordinates.',
+          );
+          return;
+        }
+        await _showSettingsDialog(
+          title: 'Location access is blocked',
+          message: 'Location permission was denied permanently. Allow it in Settings to add coordinates.',
+          openSettings: Geolocator.openAppSettings,
+        );
+        return;
+      }
+
+      Position? position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 20),
+          ),
+        );
+      } on TimeoutException {
+        // No fresh fix in 20 seconds: use the last known one on mobile.
+        if (!kIsWeb) position = await Geolocator.getLastKnownPosition();
+      }
+
+      if (position == null) {
+        _showMessage(
+          'Could not get your location in time',
+          action: SnackBarAction(label: 'Try again', onPressed: _fetchLocation),
+        );
+        return;
+      }
+
+      final fix = DiaryGeoFix.fromPosition(position);
+      if (mounted) setState(() => _location = fix);
+    } on LocationServiceDisabledException {
+      _showMessage('Location services are turned off');
+    } catch (error) {
+      debugPrint('Location error: $error');
+      _showMessage(
+        'Could not get your location',
+        action: SnackBarAction(label: 'Try again', onPressed: _fetchLocation),
+      );
+    } finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
+  }
+
+  // ----- Task 4: save entry -----
+
+  Future<void> _saveEntry() async {
+    final caption = _captionController.text.trim();
+    final photo = _photo;
+    if (photo == null && caption.isEmpty) {
+      _showMessage('Add a photo or write a caption first');
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    String? savedPhoto;
+
+    if (photo != null) {
+      if (kIsWeb) {
+        savedPhoto = _webPhotoData;
+      } else {
+        try {
+          savedPhoto = await DiaryStorage.copyPhoto(photo, id);
+        } catch (error) {
+          debugPrint('Could not copy photo: $error');
+          if (mounted) setState(() => _isSaving = false);
+          _showMessage('Could not save the photo');
+          return;
+        }
+      }
+    }
+
+    final entry = DiaryEntry(
+      id: id,
+      caption: caption,
+      photo: savedPhoto,
+      location: _location,
+      createdAt: DateTime.now(),
+    );
+
+    if (!mounted) return;
+    Navigator.pop(context, entry);
+  }
+
+  Widget _buildPreview() {
+    final photo = _photo;
+    Widget content;
+
+    if (photo == null) {
+      content = Container(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.photo_camera_outlined,
+              size: 64,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 8),
+            const Text('Tap to add a photo'),
+          ],
+        ),
+      );
+    } else if (kIsWeb) {
+      content = Image.network(photo.path, fit: BoxFit.cover);
+    } else {
+      content = Image.file(File(photo.path), fit: BoxFit.cover);
+    }
+
+    return GestureDetector(
+      onTap: _showPhotoSourceSheet,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: AspectRatio(aspectRatio: 4 / 3, child: content),
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          Expanded(child: Text(value)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocationCard() {
+    final location = _location;
+    Widget content;
+
+    if (_isLocating) {
+      content = const Row(
+        children: [
+          SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+          SizedBox(width: 12),
+          Text('Getting your location...'),
+        ],
+      );
+    } else if (location == null) {
+      content = const Text('No coordinates yet. Tap "Fetch GPS".');
+    } else {
+      content = Column(
+        children: [
+          _infoRow('Latitude', location.latitude.toStringAsFixed(6)),
+          _infoRow('Longitude', location.longitude.toStringAsFixed(6)),
+          _infoRow('Accuracy', '± ${location.accuracy.toStringAsFixed(1)} m'),
+          _infoRow('Altitude', '${location.altitude.toStringAsFixed(1)} m'),
+          _infoRow('Timestamp', diaryFormatDateTime(location.timestamp)),
+        ],
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Location', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 10),
+            content,
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isLocating ? null : _fetchLocation,
+                icon: const Icon(Icons.my_location),
+                label: const Text('Fetch GPS'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('New Diary Entry')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            _buildPreview(),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => _pickPhoto(ImageSource.camera),
+                    icon: const Icon(Icons.photo_camera),
+                    label: const Text('Camera'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => _pickPhoto(ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library),
+                    label: const Text('Gallery'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildLocationCard(),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _captionController,
+              maxLines: 3,
+              minLines: 1,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Caption',
+                hintText: 'What is happening in this photo?',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isSaving ? null : _saveEntry,
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: const Text('Save Entry'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

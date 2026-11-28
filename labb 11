@@ -1,11 +1,159 @@
+// Lab 11 — KinoPass + Offline Notes & Settings Vault (shared_preferences).
+// Put this file into lib/main.dart of a Flutter project and add the packages:
+//   flutter pub add provider url_launcher http shared_preferences
+
+import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';import 'package:provider/provider.dart';import 'package:url_launcher/url_launcher.dart';Future<void> main() async {
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final preferences = await SharedPreferences.getInstance();
   final savedDarkMode = preferences.getBool('app_theme_dark_mode') ?? false;
   runApp(KinoPassApp(initialDarkMode: savedDarkMode));
-}// ==================== MOVIE MODEL ====================class Movie {  final String id;  final String title;  final String genre;  final int year;  final int durationMinutes;  final double rating;  final String ageLimit;  final String description;  final String imageUrl;  final int price;  const Movie({    required this.id,    required this.title,    required this.genre,    required this.year,    required this.durationMinutes,    required this.rating,    required this.ageLimit,    required this.description,    required this.imageUrl,    required this.price,  });  String get duration => '$durationMinutes мин';}// ==================== MOVIES ====================final List<Movie> nowInCinema = [  Movie(    id: '1',    title: 'Дюна: Часть третья',    genre: 'Фантастика',    year: 2026,    durationMinutes: 165,    rating: 8.4,    ageLimit: '16+',    price: 2500,    imageUrl:        'https://images.unsplash.com/photo-1509316785289-025f5b846b35?w=800',    description:        'Продолжение масштабной истории о пустынной планете Арракис. Пол Атрейдес сталкивается с новыми испытаниями и сложным выбором.',  ),  Movie(    id: '2',    title: 'Тихая гавань',    genre: 'Драма',    year: 2026,    durationMinutes: 118,    rating: 7.6,    ageLimit: '12+',    price: 2000,    imageUrl:        'https://images.unsplash.com/photo-1500375592092-40eb2168fd21?w=800',    description:        'История о людях, которые пытаются начать новую жизнь и найти своё место в мире.',  ),  Movie(    id: '3',    title: 'Последний рейс',    genre: 'Триллер',    year: 2026,    durationMinutes: 104,    rating: 7.1,    ageLimit: '18+',    price: 1800,    imageUrl:        'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800',    description:        'Обычный авиарейс превращается в опасное путешествие, когда на борту начинают происходить странные события.',  ),  Movie(    id: '4',    title: 'Кот и космос',    genre: 'Мультфильм',    year: 2026,    durationMinutes: 92,    rating: 8.0,    ageLimit: '0+',    price: 1500,    imageUrl:        'https://images.unsplash.com/photo-1573865526739-10659fec78a5?w=800',    description:        'Маленький кот отправляется в большое космическое приключение и находит новых друзей.',  ),  Movie(    id: '5',    title: 'Степной ветер',    genre: 'Приключения',    year: 2026,    durationMinutes: 131,    rating: 7.9,    ageLimit: '12+',    price: 2200,    imageUrl:        'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800',    description:        'Приключенческая история о путешествии по бескрайним степям и поиске своего пути.',  ),  Movie(    id: '6',    title: 'Последняя премьера',    genre: 'Детектив',    year: 2026,    durationMinutes: 115,    rating: 8.1,    ageLimit: '16+',    price: 2300,    imageUrl:        'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800',    description:        'Загадочная история, в которой каждый новый факт меняет ход расследования.',  ),];// ==================== SUBSCRIPTION ====================class Subscription extends ChangeNotifier {  DateTime? _activeUntil;  bool get isActive =>      _activeUntil != null && _activeUntil!.isAfter(DateTime.now());  int get daysLeft {    if (!isActive) return 0;    return _activeUntil!.difference(DateTime.now()).inDays + 1;  }  void activate() {    _activeUntil = DateTime.now().add(const Duration(days: 14));    notifyListeners();  }}// ==================== CART PROVIDER ====================class CartProvider extends ChangeNotifier {
+}
+
+// ==================== MOVIE MODEL ====================
+
+class Movie {
+  final String id;
+  final String title;
+  final String genre;
+  final int year;
+  final int durationMinutes;
+  final double rating;
+  final String ageLimit;
+  final String description;
+  final String imageUrl;
+  final int price;
+
+  const Movie({
+    required this.id,
+    required this.title,
+    required this.genre,
+    required this.year,
+    required this.durationMinutes,
+    required this.rating,
+    required this.ageLimit,
+    required this.description,
+    required this.imageUrl,
+    required this.price,
+  });
+
+  String get duration => '$durationMinutes мин';
+}
+
+// ==================== MOVIES ====================
+
+final List<Movie> nowInCinema = [
+  Movie(
+    id: '1',
+    title: 'Дюна: Часть третья',
+    genre: 'Фантастика',
+    year: 2026,
+    durationMinutes: 165,
+    rating: 8.4,
+    ageLimit: '16+',
+    price: 2500,
+    imageUrl:
+        'https://images.unsplash.com/photo-1509316785289-025f5b846b35?w=800',
+    description: 'Продолжение масштабной истории о пустынной планете Арракис. Пол Атрейдес сталкивается с новыми испытаниями и сложным выбором.',
+  ),
+  Movie(
+    id: '2',
+    title: 'Тихая гавань',
+    genre: 'Драма',
+    year: 2026,
+    durationMinutes: 118,
+    rating: 7.6,
+    ageLimit: '12+',
+    price: 2000,
+    imageUrl:
+        'https://images.unsplash.com/photo-1500375592092-40eb2168fd21?w=800',
+    description: 'История о людях, которые пытаются начать новую жизнь и найти своё место в мире.',
+  ),
+  Movie(
+    id: '3',
+    title: 'Последний рейс',
+    genre: 'Триллер',
+    year: 2026,
+    durationMinutes: 104,
+    rating: 7.1,
+    ageLimit: '18+',
+    price: 1800,
+    imageUrl:
+        'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800',
+    description: 'Обычный авиарейс превращается в опасное путешествие, когда на борту начинают происходить странные события.',
+  ),
+  Movie(
+    id: '4',
+    title: 'Кот и космос',
+    genre: 'Мультфильм',
+    year: 2026,
+    durationMinutes: 92,
+    rating: 8.0,
+    ageLimit: '0+',
+    price: 1500,
+    imageUrl:
+        'https://images.unsplash.com/photo-1573865526739-10659fec78a5?w=800',
+    description: 'Маленький кот отправляется в большое космическое приключение и находит новых друзей.',
+  ),
+  Movie(
+    id: '5',
+    title: 'Степной ветер',
+    genre: 'Приключения',
+    year: 2026,
+    durationMinutes: 131,
+    rating: 7.9,
+    ageLimit: '12+',
+    price: 2200,
+    imageUrl:
+        'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800',
+    description: 'Приключенческая история о путешествии по бескрайним степям и поиске своего пути.',
+  ),
+  Movie(
+    id: '6',
+    title: 'Последняя премьера',
+    genre: 'Детектив',
+    year: 2026,
+    durationMinutes: 115,
+    rating: 8.1,
+    ageLimit: '16+',
+    price: 2300,
+    imageUrl:
+        'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800',
+    description: 'Загадочная история, в которой каждый новый факт меняет ход расследования.',
+  ),
+];
+
+// ==================== SUBSCRIPTION ====================
+
+class Subscription extends ChangeNotifier {
+  DateTime? _activeUntil;
+
+  bool get isActive =>
+      _activeUntil != null && _activeUntil!.isAfter(DateTime.now());
+
+  int get daysLeft {
+    if (!isActive) return 0;
+    return _activeUntil!.difference(DateTime.now()).inDays + 1;
+  }
+
+  void activate() {
+    _activeUntil = DateTime.now().add(const Duration(days: 14));
+    notifyListeners();
+  }
+}
+
+// ==================== CART PROVIDER ====================
+
+class CartProvider extends ChangeNotifier {
   final List<Movie> _items = [];
   final List<Product> _products = [];
   List<Movie> get items => List.unmodifiable(_items);
@@ -15,7 +163,36 @@ import 'package:shared_preferences/shared_preferences.dart';import 'package:prov
     if (_products.any((item) => item.id == product.id)) return;
     _products.add(product);
     notifyListeners();
-  }  int get itemCount => _items.length;  int get totalPrice =>      _items.fold(0, (total, movie) => total + movie.price);  bool contains(Movie movie) {    return _items.any((item) => item.id == movie.id);  }  void addToCart(Movie movie) {    if (contains(movie)) return;    _items.add(movie);    notifyListeners();  }  void removeFromCart(Movie movie) {    _items.removeWhere((item) => item.id == movie.id);    notifyListeners();  }  void clearCart() {    _items.clear();    notifyListeners();  }}// ==================== APP ====================class KinoPassApp extends StatefulWidget {
+  }
+
+  int get itemCount => _items.length;
+
+  int get totalPrice => _items.fold(0, (total, movie) => total + movie.price);
+
+  bool contains(Movie movie) {
+    return _items.any((item) => item.id == movie.id);
+  }
+
+  void addToCart(Movie movie) {
+    if (contains(movie)) return;
+    _items.add(movie);
+    notifyListeners();
+  }
+
+  void removeFromCart(Movie movie) {
+    _items.removeWhere((item) => item.id == movie.id);
+    notifyListeners();
+  }
+
+  void clearCart() {
+    _items.clear();
+    notifyListeners();
+  }
+}
+
+// ==================== APP ====================
+
+class KinoPassApp extends StatefulWidget {
   final bool initialDarkMode;
   const KinoPassApp({super.key, required this.initialDarkMode});
   @override
@@ -45,7 +222,9 @@ class _KinoPassAppState extends State<KinoPassApp> {
         title: 'KinoPass',
         theme: ThemeData(
           brightness: isDarkMode ? Brightness.dark : Brightness.light,
-          scaffoldBackgroundColor: isDarkMode ? const Color(0xFF111111) : const Color(0xFFF7F7F7),
+          scaffoldBackgroundColor: isDarkMode
+              ? const Color(0xFF111111)
+              : const Color(0xFFF7F7F7),
           colorScheme: ColorScheme.fromSeed(
             seedColor: Colors.deepOrange,
             brightness: isDarkMode ? Brightness.dark : Brightness.light,
@@ -60,14 +239,428 @@ class _KinoPassAppState extends State<KinoPassApp> {
       ),
     );
   }
-}// ==================== HOME SCREEN ====================class HomeScreen extends StatefulWidget {
+}
+
+// ==================== HOME SCREEN ====================
+
+class HomeScreen extends StatefulWidget {
   final Subscription subscription;
   final bool isDarkMode;
   final ValueChanged<bool> onThemeChanged;
-  const HomeScreen({super.key, required this.subscription, required this.isDarkMode, required this.onThemeChanged});
+  const HomeScreen({
+    super.key,
+    required this.subscription,
+    required this.isDarkMode,
+    required this.onThemeChanged,
+  });
   @override
   State<HomeScreen> createState() => _HomeScreenState();
-}class _HomeScreenState extends State<HomeScreen> {  int selectedIndex = 0;  bool isGridView = false;  bool isSearching = false;  final TextEditingController searchController = TextEditingController();  final Set<String> favoriteTitles = {};  List<Movie> movies = List.from(nowInCinema);  List<Movie> get filteredMovies {    if (searchController.text.isEmpty) return movies;    return movies.where((movie) {      return movie.title          .toLowerCase()          .contains(searchController.text.toLowerCase());    }).toList();  }  List<Movie> get favoriteMovies {    return movies        .where((movie) => favoriteTitles.contains(movie.title))        .toList();  }  void toggleFavorite(Movie movie) {    setState(() {      if (favoriteTitles.contains(movie.title)) {        favoriteTitles.remove(movie.title);      } else {        favoriteTitles.add(movie.title);      }    });  }  Future<void> refreshMovies() async {    await Future.delayed(const Duration(milliseconds: 1500));    if (!mounted) return;    final newMovie = Movie(      id: DateTime.now().microsecondsSinceEpoch.toString(),      title: 'Новая премьера',      genre: 'Новинка',      year: 2026,      durationMinutes: 110,      rating: 8.2,      ageLimit: '12+',      price: 2000,      imageUrl:          'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800',      description: 'Новая премьера в каталоге KinoPass.',    );    setState(() {      movies.insert(0, newMovie);    });  }  void deleteMovie(Movie movie) {    final index = movies.indexWhere((item) => item.id == movie.id);    if (index == -1) return;    setState(() {      movies.removeAt(index);    });    ScaffoldMessenger.of(context).hideCurrentSnackBar();    ScaffoldMessenger.of(context).showSnackBar(      SnackBar(        content: Text('${movie.title} удалён'),        action: SnackBarAction(          label: 'UNDO',          onPressed: () {            setState(() {              movies.insert(                index.clamp(0, movies.length),                movie,              );            });          },        ),      ),    );  }  void resetCatalog() {    setState(() {      movies = List.from(nowInCinema);      searchController.clear();    });  }  Widget deleteBackground() {    return Container(      alignment: Alignment.centerRight,      padding: const EdgeInsets.only(right: 25),      color: Colors.red,      child: const Icon(        Icons.delete,        color: Colors.white,        size: 30,      ),    );  }  // ==================== LIST VIEW ====================  Widget buildListView() {    final visibleMovies = filteredMovies;    return ListView.separated(      physics: const AlwaysScrollableScrollPhysics(),      padding: const EdgeInsets.all(12),      itemCount: visibleMovies.length,      separatorBuilder: (context, index) =>          const SizedBox(height: 8),      itemBuilder: (context, index) {        final movie = visibleMovies[index];        return Dismissible(          key: ValueKey(movie.id),          direction: DismissDirection.endToStart,          background: deleteBackground(),          onDismissed: (direction) {            deleteMovie(movie);          },          child: MovieListItem(            movie: movie,            isFavorite: favoriteTitles.contains(movie.title),            onFavorite: () => toggleFavorite(movie),            isInCart: context.watch<CartProvider>().contains(movie),            onCart: () {              final cart = context.read<CartProvider>();              if (cart.contains(movie)) {                cart.removeFromCart(movie);              } else {                cart.addToCart(movie);              }            },            onTap: () => openMovie(movie),          ),        );      },    );  }  // ==================== GRID VIEW ====================  Widget buildGridView() {    final visibleMovies = filteredMovies;    return GridView.builder(      physics: const AlwaysScrollableScrollPhysics(),      padding: const EdgeInsets.all(12),      itemCount: visibleMovies.length,      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(        crossAxisCount: 2,        childAspectRatio: 0.72,        crossAxisSpacing: 12,        mainAxisSpacing: 12,      ),      itemBuilder: (context, index) {        final movie = visibleMovies[index];        return Dismissible(          key: ValueKey(movie.id),          direction: DismissDirection.endToStart,          background: deleteBackground(),          onDismissed: (direction) {            deleteMovie(movie);          },          child: MovieGridItem(            movie: movie,            isFavorite: favoriteTitles.contains(movie.title),            onFavorite: () => toggleFavorite(movie),            isInCart: context.watch<CartProvider>().contains(movie),            onCart: () {              final cart = context.read<CartProvider>();              if (cart.contains(movie)) {                cart.removeFromCart(movie);              } else {                cart.addToCart(movie);              }            },            onTap: () => openMovie(movie),          ),        );      },    );  }  // ==================== EMPTY STATE ====================  Widget buildEmptyState() {    return Center(      child: Column(        mainAxisAlignment: MainAxisAlignment.center,        children: [          const Icon(            Icons.movie_creation_outlined,            size: 65,            color: Colors.grey,          ),          const SizedBox(height: 15),          const Text(            'Catalog is Empty',            style: TextStyle(fontSize: 20),          ),          const SizedBox(height: 15),          ElevatedButton(            onPressed: resetCatalog,            child: const Text('Reset Catalog'),          ),        ],      ),    );  }  // ==================== FEED ====================  Widget buildFeed() {    if (movies.isEmpty) {      return buildEmptyState();    }    return Column(      children: [        SubscriptionBanner(subscription: widget.subscription),        Padding(          padding: const EdgeInsets.symmetric(            horizontal: 16,            vertical: 8,          ),          child: Row(            children: [              const Expanded(                child: Text(                  'Сейчас в кино',                  style: TextStyle(                    fontSize: 21,                    fontWeight: FontWeight.bold,                  ),                ),              ),              IconButton(                tooltip: 'Список',                onPressed: () {                  setState(() {                    isGridView = false;                  });                },                icon: Icon(                  Icons.view_list,                  color: isGridView ? Colors.grey : Colors.deepOrange,                ),              ),              IconButton(                tooltip: 'Сетка',                onPressed: () {                  setState(() {                    isGridView = true;                  });                },                icon: Icon(                  Icons.grid_view,                  color: isGridView ? Colors.deepOrange : Colors.grey,                ),              ),            ],          ),        ),        Expanded(          child: RefreshIndicator(            onRefresh: refreshMovies,            child: isGridView ? buildGridView() : buildListView(),          ),        ),      ],    );  }  // ==================== FAVORITES ====================  Widget buildFavorites() {    if (favoriteMovies.isEmpty) {      return const Center(        child: Text(          'Пока нет избранных фильмов',          style: TextStyle(fontSize: 17),        ),      );    }    return ListView.separated(      padding: const EdgeInsets.all(12),      itemCount: favoriteMovies.length,      separatorBuilder: (context, index) =>          const SizedBox(height: 8),      itemBuilder: (context, index) {        final movie = favoriteMovies[index];        return MovieListItem(          movie: movie,          isFavorite: true,          onFavorite: () => toggleFavorite(movie),          isInCart: context.watch<CartProvider>().contains(movie),          onCart: () {            final cart = context.read<CartProvider>();            if (cart.contains(movie)) {              cart.removeFromCart(movie);            } else {              cart.addToCart(movie);            }          },          onTap: () => openMovie(movie),        );      },    );  }  // ==================== PROFILE ====================  Widget buildProfile() {    return Center(      child: Column(        mainAxisAlignment: MainAxisAlignment.center,        children: [          const CircleAvatar(            radius: 48,            backgroundColor: Colors.deepOrange,            child: Icon(              Icons.person,              size: 55,              color: Colors.white,            ),          ),          const SizedBox(height: 15),          const Text(            'Пользователь KinoPass',            style: TextStyle(              fontSize: 21,              fontWeight: FontWeight.bold,            ),          ),          const SizedBox(height: 25),          ListTile(            leading: const Icon(Icons.favorite),            title: const Text('Избранные фильмы'),            trailing: const Icon(Icons.arrow_forward_ios, size: 16),            onTap: () {              setState(() {                selectedIndex = 1;              });            },          ),          ListTile(            leading: const Icon(Icons.settings),            title: const Text('Настройки'),            trailing: const Icon(Icons.arrow_forward_ios, size: 16),            onTap: openSettings,          ),        ],      ),    );  }  // ==================== NAVIGATION ====================  void openMovie(Movie movie) {    Navigator.push(      context,      MaterialPageRoute(        builder: (context) => MovieDetailScreen(          movie: movie,          subscription: widget.subscription,          isFavorite: favoriteTitles.contains(movie.title),          onFavorite: () => toggleFavorite(movie),        ),      ),    );  }  void openSettings() {    Navigator.push(      context,      MaterialPageRoute(        builder: (context) => SettingsScreen(          subscription: widget.subscription,        ),      ),    );  }  void goBackToHome() {    setState(() {      selectedIndex = 0;    });  }  // ==================== MAIN BUILD ====================  @override  Widget build(BuildContext context) {    final titles = ['KinoPass', 'Избранное', 'Профиль'];    return Scaffold(      appBar: AppBar(        title: isSearching            ? TextField(                controller: searchController,                autofocus: true,                decoration: const InputDecoration(                  hintText: 'Поиск фильма...',                  border: InputBorder.none,                ),                onChanged: (value) {                  setState(() {});                },              )            : Text(titles[selectedIndex]),        leading: selectedIndex != 0            ? IconButton(                icon: const Icon(Icons.arrow_back),                onPressed: goBackToHome,              )            : null,        actions: [
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int selectedIndex = 0;
+  bool isGridView = false;
+  bool isSearching = false;
+
+  final TextEditingController searchController = TextEditingController();
+  final Set<String> favoriteTitles = {};
+
+  List<Movie> movies = List.from(nowInCinema);
+
+  List<Movie> get filteredMovies {
+    if (searchController.text.isEmpty) return movies;
+
+    return movies.where((movie) {
+      return movie.title.toLowerCase().contains(
+        searchController.text.toLowerCase(),
+      );
+    }).toList();
+  }
+
+  List<Movie> get favoriteMovies {
+    return movies
+        .where((movie) => favoriteTitles.contains(movie.title))
+        .toList();
+  }
+
+  void toggleFavorite(Movie movie) {
+    setState(() {
+      if (favoriteTitles.contains(movie.title)) {
+        favoriteTitles.remove(movie.title);
+      } else {
+        favoriteTitles.add(movie.title);
+      }
+    });
+  }
+
+  Future<void> refreshMovies() async {
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    if (!mounted) return;
+
+    final newMovie = Movie(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      title: 'Новая премьера',
+      genre: 'Новинка',
+      year: 2026,
+      durationMinutes: 110,
+      rating: 8.2,
+      ageLimit: '12+',
+      price: 2000,
+      imageUrl:
+          'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800',
+      description: 'Новая премьера в каталоге KinoPass.',
+    );
+
+    setState(() {
+      movies.insert(0, newMovie);
+    });
+  }
+
+  void deleteMovie(Movie movie) {
+    final index = movies.indexWhere((item) => item.id == movie.id);
+
+    if (index == -1) return;
+
+    setState(() {
+      movies.removeAt(index);
+    });
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${movie.title} удалён'),
+        action: SnackBarAction(
+          label: 'UNDO',
+          onPressed: () {
+            setState(() {
+              movies.insert(index.clamp(0, movies.length), movie);
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  void resetCatalog() {
+    setState(() {
+      movies = List.from(nowInCinema);
+      searchController.clear();
+    });
+  }
+
+  Widget deleteBackground() {
+    return Container(
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.only(right: 25),
+      color: Colors.red,
+      child: const Icon(Icons.delete, color: Colors.white, size: 30),
+    );
+  }
+
+  // ==================== LIST VIEW ====================
+
+  Widget buildListView() {
+    final visibleMovies = filteredMovies;
+
+    return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(12),
+      itemCount: visibleMovies.length,
+      separatorBuilder: (context, index) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final movie = visibleMovies[index];
+
+        return Dismissible(
+          key: ValueKey(movie.id),
+          direction: DismissDirection.endToStart,
+          background: deleteBackground(),
+          onDismissed: (direction) {
+            deleteMovie(movie);
+          },
+          child: MovieListItem(
+            movie: movie,
+            isFavorite: favoriteTitles.contains(movie.title),
+            onFavorite: () => toggleFavorite(movie),
+            isInCart: context.watch<CartProvider>().contains(movie),
+            onCart: () {
+              final cart = context.read<CartProvider>();
+              if (cart.contains(movie)) {
+                cart.removeFromCart(movie);
+              } else {
+                cart.addToCart(movie);
+              }
+            },
+            onTap: () => openMovie(movie),
+          ),
+        );
+      },
+    );
+  }
+
+  // ==================== GRID VIEW ====================
+
+  Widget buildGridView() {
+    final visibleMovies = filteredMovies;
+
+    return GridView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(12),
+      itemCount: visibleMovies.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.72,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
+      itemBuilder: (context, index) {
+        final movie = visibleMovies[index];
+
+        return Dismissible(
+          key: ValueKey(movie.id),
+          direction: DismissDirection.endToStart,
+          background: deleteBackground(),
+          onDismissed: (direction) {
+            deleteMovie(movie);
+          },
+          child: MovieGridItem(
+            movie: movie,
+            isFavorite: favoriteTitles.contains(movie.title),
+            onFavorite: () => toggleFavorite(movie),
+            isInCart: context.watch<CartProvider>().contains(movie),
+            onCart: () {
+              final cart = context.read<CartProvider>();
+              if (cart.contains(movie)) {
+                cart.removeFromCart(movie);
+              } else {
+                cart.addToCart(movie);
+              }
+            },
+            onTap: () => openMovie(movie),
+          ),
+        );
+      },
+    );
+  }
+
+  // ==================== EMPTY STATE ====================
+
+  Widget buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.movie_creation_outlined,
+            size: 65,
+            color: Colors.grey,
+          ),
+          const SizedBox(height: 15),
+          const Text('Catalog is Empty', style: TextStyle(fontSize: 20)),
+          const SizedBox(height: 15),
+          ElevatedButton(
+            onPressed: resetCatalog,
+            child: const Text('Reset Catalog'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== FEED ====================
+
+  Widget buildFeed() {
+    if (movies.isEmpty) {
+      return buildEmptyState();
+    }
+
+    return Column(
+      children: [
+        SubscriptionBanner(subscription: widget.subscription),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Сейчас в кино',
+                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Список',
+                onPressed: () {
+                  setState(() {
+                    isGridView = false;
+                  });
+                },
+                icon: Icon(
+                  Icons.view_list,
+                  color: isGridView ? Colors.grey : Colors.deepOrange,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Сетка',
+                onPressed: () {
+                  setState(() {
+                    isGridView = true;
+                  });
+                },
+                icon: Icon(
+                  Icons.grid_view,
+                  color: isGridView ? Colors.deepOrange : Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: refreshMovies,
+            child: isGridView ? buildGridView() : buildListView(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ==================== FAVORITES ====================
+
+  Widget buildFavorites() {
+    if (favoriteMovies.isEmpty) {
+      return const Center(
+        child: Text(
+          'Пока нет избранных фильмов',
+          style: TextStyle(fontSize: 17),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: favoriteMovies.length,
+      separatorBuilder: (context, index) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final movie = favoriteMovies[index];
+
+        return MovieListItem(
+          movie: movie,
+          isFavorite: true,
+          onFavorite: () => toggleFavorite(movie),
+          isInCart: context.watch<CartProvider>().contains(movie),
+          onCart: () {
+            final cart = context.read<CartProvider>();
+            if (cart.contains(movie)) {
+              cart.removeFromCart(movie);
+            } else {
+              cart.addToCart(movie);
+            }
+          },
+          onTap: () => openMovie(movie),
+        );
+      },
+    );
+  }
+
+  // ==================== PROFILE ====================
+
+  Widget buildProfile() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircleAvatar(
+            radius: 48,
+            backgroundColor: Colors.deepOrange,
+            child: Icon(Icons.person, size: 55, color: Colors.white),
+          ),
+          const SizedBox(height: 15),
+          const Text(
+            'Пользователь KinoPass',
+            style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 25),
+          ListTile(
+            leading: const Icon(Icons.favorite),
+            title: const Text('Избранные фильмы'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              setState(() {
+                selectedIndex = 1;
+              });
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.settings),
+            title: const Text('Настройки'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: openSettings,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== NAVIGATION ====================
+
+  void openMovie(Movie movie) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MovieDetailScreen(
+          movie: movie,
+          subscription: widget.subscription,
+          isFavorite: favoriteTitles.contains(movie.title),
+          onFavorite: () => toggleFavorite(movie),
+        ),
+      ),
+    );
+  }
+
+  void openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SettingsScreen(subscription: widget.subscription),
+      ),
+    );
+  }
+
+  void goBackToHome() {
+    setState(() {
+      selectedIndex = 0;
+    });
+  }
+
+  // ==================== MAIN BUILD ====================
+
+  @override
+  Widget build(BuildContext context) {
+    final titles = ['KinoPass', 'Избранное', 'Профиль'];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: isSearching
+            ? TextField(
+                controller: searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Поиск фильма...',
+                  border: InputBorder.none,
+                ),
+                onChanged: (value) {
+                  setState(() {});
+                },
+              )
+            : Text(titles[selectedIndex]),
+        leading: selectedIndex != 0
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: goBackToHome,
+              )
+            : null,
+        actions: [
           IconButton(
             tooltip: 'Offline Notes & Settings Vault',
             icon: const Icon(Icons.note_alt_outlined),
@@ -96,8 +689,851 @@ class _KinoPassAppState extends State<KinoPassApp> {
             },
           ),
           IconButton(
-            tooltip: 'Корзина',            onPressed: () {              Navigator.push(                context,                MaterialPageRoute(                  builder: (context) => const CartScreen(),                ),              );            },            icon: Consumer<CartProvider>(              builder: (context, cart, child) {                return Stack(                  clipBehavior: Clip.none,                  children: [                    const Icon(Icons.shopping_cart_outlined),                    if (cart.itemCount > 0)                      Positioned(                        right: -7,                        top: -7,                        child: Container(                          padding: const EdgeInsets.all(4),                          decoration: const BoxDecoration(                            color: Colors.deepOrange,                            shape: BoxShape.circle,                          ),                          constraints: const BoxConstraints(                            minWidth: 18,                            minHeight: 18,                          ),                          child: Text(                            '${cart.itemCount}',                            textAlign: TextAlign.center,                            style: const TextStyle(                              color: Colors.white,                              fontSize: 10,                              fontWeight: FontWeight.bold,                            ),                          ),                        ),                      ),                  ],                );              },            ),          ),          if (selectedIndex == 0) ...[            IconButton(              icon: Icon(                isSearching ? Icons.close : Icons.search,              ),              onPressed: () {                setState(() {                  isSearching = !isSearching;                  if (!isSearching) {                    searchController.clear();                  }                });              },            ),            IconButton(              icon: const Icon(Icons.settings),              onPressed: openSettings,            ),          ],        ],      ),      body: selectedIndex == 0          ? buildFeed()          : selectedIndex == 1              ? buildFavorites()              : buildProfile(),      bottomNavigationBar: NavigationBar(        selectedIndex: selectedIndex,        onDestinationSelected: (index) {          setState(() {            selectedIndex = index;            isSearching = false;            searchController.clear();          });        },        destinations: const [          NavigationDestination(            icon: Icon(Icons.home_outlined),            selectedIcon: Icon(Icons.home),            label: 'Главная',          ),          NavigationDestination(            icon: Icon(Icons.favorite_outline),            selectedIcon: Icon(Icons.favorite),            label: 'Избранное',          ),          NavigationDestination(            icon: Icon(Icons.person_outline),            selectedIcon: Icon(Icons.person),            label: 'Профиль',          ),        ],      ),    );  }  @override  void dispose() {    searchController.dispose();    super.dispose();  }}// ==================== MOVIE LIST ITEM ====================class MovieListItem extends StatelessWidget {  final Movie movie;  final bool isFavorite;  final VoidCallback onFavorite;  final bool isInCart;  final VoidCallback onCart;  final VoidCallback onTap;  const MovieListItem({    super.key,    required this.movie,    required this.isFavorite,    required this.onFavorite,    required this.isInCart,    required this.onCart,    required this.onTap,  });  @override  Widget build(BuildContext context) {    return Card(      child: InkWell(        onTap: onTap,        borderRadius: BorderRadius.circular(12),        child: Padding(          padding: const EdgeInsets.all(9),          child: Row(            children: [              MoviePoster(                imageUrl: movie.imageUrl,                width: 95,                height: 125,              ),              const SizedBox(width: 12),              Expanded(                child: Column(                  crossAxisAlignment: CrossAxisAlignment.start,                  children: [                    Text(                      movie.title,                      maxLines: 2,                      overflow: TextOverflow.ellipsis,                      style: const TextStyle(                        fontSize: 16,                        fontWeight: FontWeight.bold,                      ),                    ),                    const SizedBox(height: 5),                    Text('${movie.genre} • ${movie.year}'),                    const SizedBox(height: 5),                    Text('${movie.duration} • ${movie.ageLimit}'),                    const SizedBox(height: 5),                    RatingRow(rating: movie.rating),                    const SizedBox(height: 5),                    Text(                      '${movie.price} ₸',                      style: const TextStyle(                        color: Colors.deepOrange,                        fontWeight: FontWeight.bold,                      ),                    ),                  ],                ),              ),              Column(                mainAxisSize: MainAxisSize.min,                children: [                  IconButton(                    onPressed: onFavorite,                    icon: Icon(                      isFavorite ? Icons.favorite : Icons.favorite_border,                      color: isFavorite ? Colors.red : Colors.grey,                    ),                  ),                  IconButton(                    tooltip: isInCart ? 'Удалить из корзины' : 'Добавить в корзину',                    onPressed: onCart,                    icon: Icon(                      isInCart                          ? Icons.remove_shopping_cart                          : Icons.add_shopping_cart,                      color: isInCart ? Colors.deepOrange : Colors.grey,                    ),                  ),                ],              ),            ],          ),        ),      ),    );  }}// ==================== MOVIE GRID ITEM ====================class MovieGridItem extends StatelessWidget {  final Movie movie;  final bool isFavorite;  final VoidCallback onFavorite;  final bool isInCart;  final VoidCallback onCart;  final VoidCallback onTap;  const MovieGridItem({    super.key,    required this.movie,    required this.isFavorite,    required this.onFavorite,    required this.isInCart,    required this.onCart,    required this.onTap,  });  @override  Widget build(BuildContext context) {    return Card(      clipBehavior: Clip.antiAlias,      child: InkWell(        onTap: onTap,        child: Column(          crossAxisAlignment: CrossAxisAlignment.start,          children: [            Expanded(              child: Stack(                fit: StackFit.expand,                children: [                  MoviePoster(                    imageUrl: movie.imageUrl,                    width: double.infinity,                    height: double.infinity,                  ),                  Positioned(                    right: 5,                    top: 5,                    child: CircleAvatar(                      backgroundColor: Colors.black54,                      child: IconButton(                        padding: EdgeInsets.zero,                        onPressed: onFavorite,                        icon: Icon(                          isFavorite                              ? Icons.favorite                              : Icons.favorite_border,                          color: isFavorite ? Colors.red : Colors.white,                          size: 20,                        ),                      ),                    ),                  ),                ],              ),            ),            Padding(              padding: const EdgeInsets.all(8),              child: Column(                crossAxisAlignment: CrossAxisAlignment.start,                children: [                  Text(                    movie.title,                    maxLines: 1,                    overflow: TextOverflow.ellipsis,                    style: const TextStyle(                      fontWeight: FontWeight.bold,                    ),                  ),                  const SizedBox(height: 3),                  Text(                    movie.genre,                    style: const TextStyle(color: Colors.grey),                  ),                  const SizedBox(height: 3),                  Row(                    children: [                      const Icon(                        Icons.star,                        color: Colors.amber,                        size: 16,                      ),                      const SizedBox(width: 3),                      Text('${movie.rating}'),                      const Spacer(),                      Text(                        '${movie.price} ₸',                        style: const TextStyle(                          color: Colors.deepOrange,                          fontWeight: FontWeight.bold,                        ),                      ),                      IconButton(                        visualDensity: VisualDensity.compact,                        padding: EdgeInsets.zero,                        constraints: const BoxConstraints(                          minWidth: 34,                          minHeight: 34,                        ),                        tooltip: isInCart                            ? 'Удалить из корзины'                            : 'Добавить в корзину',                        onPressed: onCart,                        icon: Icon(                          isInCart                              ? Icons.remove_shopping_cart                              : Icons.add_shopping_cart,                          color: isInCart ? Colors.deepOrange : Colors.grey,                          size: 20,                        ),                      ),                    ],                  ),                ],              ),            ),          ],        ),      ),    );  }}// ==================== CART SCREEN ====================class CartScreen extends StatelessWidget {  const CartScreen({super.key});  @override  Widget build(BuildContext context) {    return Consumer<CartProvider>(      builder: (context, cart, child) {        return Scaffold(          appBar: AppBar(            leading: IconButton(              icon: const Icon(Icons.arrow_back),              onPressed: () => Navigator.pop(context),            ),            title: Text('Корзина (${cart.itemCount})'),            actions: [              if (cart.items.isNotEmpty)                TextButton(                  onPressed: cart.clearCart,                  child: const Text(                    'Clear All',                    style: TextStyle(color: Colors.deepOrange),                  ),                ),            ],          ),          body: cart.items.isEmpty              ? const Center(                  child: Column(                    mainAxisAlignment: MainAxisAlignment.center,                    children: [                      Icon(                        Icons.shopping_cart_outlined,                        size: 70,                        color: Colors.grey,                      ),                      SizedBox(height: 12),                      Text(                        'Корзина пуста',                        style: TextStyle(fontSize: 19),                      ),                    ],                  ),                )              : Column(                  children: [                    Expanded(                      child: ListView.separated(                        padding: const EdgeInsets.all(12),                        itemCount: cart.items.length,                        separatorBuilder: (context, index) =>                            const SizedBox(height: 8),                        itemBuilder: (context, index) {                          final movie = cart.items[index];                          return Card(                            child: ListTile(                              contentPadding: const EdgeInsets.all(8),                              leading: MoviePoster(                                imageUrl: movie.imageUrl,                                width: 55,                                height: 75,                              ),                              title: Text(                                movie.title,                                maxLines: 2,                                overflow: TextOverflow.ellipsis,                              ),                              subtitle: Text('${movie.price} ₸'),                              trailing: IconButton(                                tooltip: 'Удалить',                                onPressed: () {                                  cart.removeFromCart(movie);                                },                                icon: const Icon(                                  Icons.delete_outline,                                  color: Colors.red,                                ),                              ),                            ),                          );                        },                      ),                    ),                    Container(                      width: double.infinity,                      padding: const EdgeInsets.all(18),                      decoration: BoxDecoration(                        color: Colors.grey.shade900,                        border: Border(                          top: BorderSide(color: Colors.grey.shade800),                        ),                      ),                      child: Row(                        mainAxisAlignment: MainAxisAlignment.spaceBetween,                        children: [                          const Text(                            'Total Price',                            style: TextStyle(                              fontSize: 18,                              fontWeight: FontWeight.bold,                            ),                          ),                          Text(                            '${cart.totalPrice} ₸',                            style: const TextStyle(                              color: Colors.deepOrange,                              fontSize: 20,                              fontWeight: FontWeight.bold,                            ),                          ),                        ],                      ),                    ),                  ],                ),        );      },    );  }}// ==================== MOVIE DETAIL SCREEN ====================class MovieDetailScreen extends StatelessWidget {  final Movie movie;  final Subscription subscription;  final bool isFavorite;  final VoidCallback onFavorite;  const MovieDetailScreen({    super.key,    required this.movie,    required this.subscription,    required this.isFavorite,    required this.onFavorite,  });  Future<void> openTrailer() async {    final Uri url = Uri.parse(      'https://www.youtube.com/results?search_query=${Uri.encodeComponent(movie.title + ' trailer')}',    );    if (await canLaunchUrl(url)) {      await launchUrl(        url,        mode: LaunchMode.externalApplication,      );    }  }  void watchMovie(BuildContext context) {    if (!subscription.isActive) {      showSubscriptionSheet(context, subscription);      return;    }    Navigator.push(      context,      MaterialPageRoute(        builder: (context) => PlayerScreen(movie: movie),      ),    );  }  @override  Widget build(BuildContext context) {    return Scaffold(      appBar: AppBar(        leading: IconButton(          icon: const Icon(Icons.arrow_back),          onPressed: () => Navigator.pop(context),        ),        title: const Text('О фильме'),        actions: [          IconButton(            onPressed: onFavorite,            icon: Icon(              isFavorite ? Icons.favorite : Icons.favorite_border,              color: isFavorite ? Colors.red : null,            ),          ),        ],      ),      body: SingleChildScrollView(        child: Column(          crossAxisAlignment: CrossAxisAlignment.start,          children: [            MoviePoster(              imageUrl: movie.imageUrl,              width: double.infinity,              height: 330,            ),            Padding(              padding: const EdgeInsets.all(18),              child: Column(                crossAxisAlignment: CrossAxisAlignment.start,                children: [                  Text(                    movie.title,                    style: const TextStyle(                      fontSize: 25,                      fontWeight: FontWeight.bold,                    ),                  ),                  const SizedBox(height: 10),                  Text(                    '${movie.genre} • ${movie.year} • ${movie.duration} • ${movie.ageLimit}',                    style: const TextStyle(color: Colors.grey),                  ),                  const SizedBox(height: 12),                  RatingRow(rating: movie.rating),                  const SizedBox(height: 20),                  const Text(                    'Описание',                    style: TextStyle(                      fontSize: 19,                      fontWeight: FontWeight.bold,                    ),                  ),                  const SizedBox(height: 8),                  Text(                    movie.description,                    style: const TextStyle(fontSize: 16),                  ),                  const SizedBox(height: 25),                  SizedBox(                    width: double.infinity,                    child: OutlinedButton.icon(                      onPressed: openTrailer,                      icon: const Icon(Icons.play_circle_outline),                      label: const Text('Смотреть трейлер'),                    ),                  ),                  const SizedBox(height: 10),                  SizedBox(                    width: double.infinity,                    child: ElevatedButton.icon(                      onPressed: () => watchMovie(context),                      icon: const Icon(Icons.play_arrow),                      label: const Text('Смотреть фильм'),                    ),                  ),                ],              ),            ),          ],        ),      ),    );  }}// ==================== SETTINGS SCREEN ====================class SettingsScreen extends StatefulWidget {  final Subscription subscription;  const SettingsScreen({    super.key,    required this.subscription,  });  @override  State<SettingsScreen> createState() => _SettingsScreenState();}class _SettingsScreenState extends State<SettingsScreen> {  bool notifications = true;  bool autoplay = false;  @override  Widget build(BuildContext context) {    return Scaffold(      appBar: AppBar(        leading: IconButton(          icon: const Icon(Icons.arrow_back),          onPressed: () => Navigator.pop(context),        ),        title: const Text('Настройки'),      ),      body: ListView(        children: [          SwitchListTile(            title: const Text('Уведомления'),            subtitle: const Text('Получать новости и обновления'),            value: notifications,            onChanged: (value) {              setState(() {                notifications = value;              });            },          ),          SwitchListTile(            title: const Text('Автовоспроизведение'),            subtitle: const Text('Автоматически запускать видео'),            value: autoplay,            onChanged: (value) {              setState(() {                autoplay = value;              });            },          ),          const Divider(),          ListTile(            leading: const Icon(Icons.card_membership),            title: const Text('Подписка KinoPass'),            subtitle: Text(              widget.subscription.isActive                  ? 'Активна • ${widget.subscription.daysLeft} дней осталось'                  : 'Не активна',            ),            trailing: const Icon(Icons.arrow_forward_ios, size: 16),            onTap: () {              showSubscriptionSheet(context, widget.subscription);            },          ),          const AboutListTile(            icon: Icon(Icons.info_outline),            applicationName: 'KinoPass',            applicationVersion: '1.0.0',            applicationLegalese: '© 2026 KinoPass',          ),        ],      ),    );  }}// ==================== SUBSCRIPTION BANNER ====================class SubscriptionBanner extends StatelessWidget {  final Subscription subscription;  const SubscriptionBanner({    super.key,    required this.subscription,  });  @override  Widget build(BuildContext context) {    return AnimatedBuilder(      animation: subscription,      builder: (context, child) {        return Container(          margin: const EdgeInsets.all(12),          padding: const EdgeInsets.all(16),          decoration: BoxDecoration(            gradient: const LinearGradient(              colors: [                Colors.deepOrange,                Color(0xFF9C2700),              ],            ),            borderRadius: BorderRadius.circular(15),          ),          child: Row(            children: [              const Icon(                Icons.movie_filter,                size: 40,                color: Colors.white,              ),              const SizedBox(width: 12),              Expanded(                child: Column(                  crossAxisAlignment: CrossAxisAlignment.start,                  children: [                    Text(                      subscription.isActive                          ? 'Подписка активна'                          : 'KinoPass Premium',                      style: const TextStyle(                        fontSize: 17,                        fontWeight: FontWeight.bold,                      ),                    ),                    const SizedBox(height: 4),                    Text(                      subscription.isActive                          ? 'Осталось дней: ${subscription.daysLeft}'                          : 'Откройте доступ к просмотру фильмов',                    ),                  ],                ),              ),              if (!subscription.isActive)                TextButton(                  onPressed: () {                    showSubscriptionSheet(context, subscription);                  },                  child: const Text(                    'Подключить',                    style: TextStyle(color: Colors.white),                  ),                ),            ],          ),        );      },    );  }}// ==================== SUBSCRIPTION SHEET ====================void showSubscriptionSheet(  BuildContext context,  Subscription subscription,) {  showModalBottomSheet(    context: context,    builder: (sheetContext) {      return Padding(        padding: const EdgeInsets.all(24),        child: Column(          mainAxisSize: MainAxisSize.min,          children: [            const Icon(              Icons.workspace_premium,              size: 55,              color: Colors.deepOrange,            ),            const SizedBox(height: 15),            const Text(              'KinoPass Premium',              style: TextStyle(                fontSize: 23,                fontWeight: FontWeight.bold,              ),            ),            const SizedBox(height: 10),            const Text('Доступ к просмотру фильмов на 14 дней'),            const SizedBox(height: 10),            const Text(              '3 ₸',              style: TextStyle(                fontSize: 26,                color: Colors.deepOrange,                fontWeight: FontWeight.bold,              ),            ),            const SizedBox(height: 20),            SizedBox(              width: double.infinity,              child: ElevatedButton(                onPressed: () {                  subscription.activate();                  Navigator.pop(sheetContext);                  ScaffoldMessenger.of(context).showSnackBar(                    const SnackBar(                      content: Text('Подписка успешно активирована!'),                    ),                  );                },                child: const Text('Активировать подписку'),              ),            ),          ],        ),      );    },  );}// ==================== PLAYER SCREEN ====================class PlayerScreen extends StatelessWidget {  final Movie movie;  const PlayerScreen({    super.key,    required this.movie,  });  @override  Widget build(BuildContext context) {    return Scaffold(      appBar: AppBar(        leading: IconButton(          icon: const Icon(Icons.arrow_back),          onPressed: () => Navigator.pop(context),        ),        title: Text(movie.title),      ),      body: Center(        child: Column(          mainAxisAlignment: MainAxisAlignment.center,          children: [            const Icon(              Icons.play_circle_outline,              size: 100,              color: Colors.deepOrange,            ),            const SizedBox(height: 15),            const Text(              'Видеоплеер KinoPass',              style: TextStyle(fontSize: 20),            ),            const SizedBox(height: 8),            Text(              movie.title,              style: const TextStyle(color: Colors.grey),            ),            const SizedBox(height: 15),            const Text(              'Здесь будет воспроизводиться фильм',              style: TextStyle(color: Colors.grey),            ),          ],        ),      ),    );  }}// ==================== MOVIE POSTER ====================class MoviePoster extends StatelessWidget {  final String imageUrl;  final double width;  final double height;  const MoviePoster({    super.key,    required this.imageUrl,    required this.width,    required this.height,  });  @override  Widget build(BuildContext context) {    return SizedBox(      width: width,      height: height,      child: Image.network(        imageUrl,        fit: BoxFit.cover,        errorBuilder: (context, error, stackTrace) {          return Container(            color: Colors.grey.shade800,            child: const Center(              child: Icon(                Icons.movie,                size: 45,                color: Colors.white54,              ),            ),          );        },      ),    );  }}// ==================== RATING ====================class RatingRow extends StatelessWidget {  final double rating;  const RatingRow({    super.key,    required this.rating,  });  @override  Widget build(BuildContext context) {    return Row(      mainAxisSize: MainAxisSize.min,      children: [        const Icon(          Icons.star,          color: Colors.amber,          size: 18,        ),        const SizedBox(width: 4),        Text(          rating.toString(),          style: const TextStyle(fontWeight: FontWeight.bold),        ),      ],    );  }}
-0 commit commentsComments0 (0)Lock conversationCommentSubscribeYou're not receivi
+            tooltip: 'Корзина',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CartScreen()),
+              );
+            },
+            icon: Consumer<CartProvider>(
+              builder: (context, cart, child) {
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.shopping_cart_outlined),
+                    if (cart.itemCount > 0)
+                      Positioned(
+                        right: -7,
+                        top: -7,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.deepOrange,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 18,
+                            minHeight: 18,
+                          ),
+                          child: Text(
+                            '${cart.itemCount}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+          if (selectedIndex == 0) ...[
+            IconButton(
+              icon: Icon(isSearching ? Icons.close : Icons.search),
+              onPressed: () {
+                setState(() {
+                  isSearching = !isSearching;
+                  if (!isSearching) {
+                    searchController.clear();
+                  }
+                });
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: openSettings,
+            ),
+          ],
+        ],
+      ),
+      body: selectedIndex == 0
+          ? buildFeed()
+          : selectedIndex == 1
+          ? buildFavorites()
+          : buildProfile(),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            selectedIndex = index;
+            isSearching = false;
+            searchController.clear();
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Главная',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.favorite_outline),
+            selectedIcon: Icon(Icons.favorite),
+            label: 'Избранное',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Профиль',
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+}
+
+// ==================== MOVIE LIST ITEM ====================
+
+class MovieListItem extends StatelessWidget {
+  final Movie movie;
+  final bool isFavorite;
+  final VoidCallback onFavorite;
+  final bool isInCart;
+  final VoidCallback onCart;
+  final VoidCallback onTap;
+
+  const MovieListItem({
+    super.key,
+    required this.movie,
+    required this.isFavorite,
+    required this.onFavorite,
+    required this.isInCart,
+    required this.onCart,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(9),
+          child: Row(
+            children: [
+              MoviePoster(imageUrl: movie.imageUrl, width: 95, height: 125),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      movie.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text('${movie.genre} • ${movie.year}'),
+                    const SizedBox(height: 5),
+                    Text('${movie.duration} • ${movie.ageLimit}'),
+                    const SizedBox(height: 5),
+                    RatingRow(rating: movie.rating),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${movie.price} ₸',
+                      style: const TextStyle(
+                        color: Colors.deepOrange,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    onPressed: onFavorite,
+                    icon: Icon(
+                      isFavorite ? Icons.favorite : Icons.favorite_border,
+                      color: isFavorite ? Colors.red : Colors.grey,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: isInCart
+                        ? 'Удалить из корзины'
+                        : 'Добавить в корзину',
+                    onPressed: onCart,
+                    icon: Icon(
+                      isInCart
+                          ? Icons.remove_shopping_cart
+                          : Icons.add_shopping_cart,
+                      color: isInCart ? Colors.deepOrange : Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== MOVIE GRID ITEM ====================
+
+class MovieGridItem extends StatelessWidget {
+  final Movie movie;
+  final bool isFavorite;
+  final VoidCallback onFavorite;
+  final bool isInCart;
+  final VoidCallback onCart;
+  final VoidCallback onTap;
+
+  const MovieGridItem({
+    super.key,
+    required this.movie,
+    required this.isFavorite,
+    required this.onFavorite,
+    required this.isInCart,
+    required this.onCart,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  MoviePoster(
+                    imageUrl: movie.imageUrl,
+                    width: double.infinity,
+                    height: double.infinity,
+                  ),
+                  Positioned(
+                    right: 5,
+                    top: 5,
+                    child: CircleAvatar(
+                      backgroundColor: Colors.black54,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: onFavorite,
+                        icon: Icon(
+                          isFavorite ? Icons.favorite : Icons.favorite_border,
+                          color: isFavorite ? Colors.red : Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    movie.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(movie.genre, style: const TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      const Icon(Icons.star, color: Colors.amber, size: 16),
+                      const SizedBox(width: 3),
+                      Text('${movie.rating}'),
+                      const Spacer(),
+                      Text(
+                        '${movie.price} ₸',
+                        style: const TextStyle(
+                          color: Colors.deepOrange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 34,
+                          minHeight: 34,
+                        ),
+                        tooltip: isInCart
+                            ? 'Удалить из корзины'
+                            : 'Добавить в корзину',
+                        onPressed: onCart,
+                        icon: Icon(
+                          isInCart
+                              ? Icons.remove_shopping_cart
+                              : Icons.add_shopping_cart,
+                          color: isInCart ? Colors.deepOrange : Colors.grey,
+                          size: 20,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== CART SCREEN ====================
+
+class CartScreen extends StatelessWidget {
+  const CartScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<CartProvider>(
+      builder: (context, cart, child) {
+        return Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: Text('Корзина (${cart.itemCount})'),
+            actions: [
+              if (cart.items.isNotEmpty)
+                TextButton(
+                  onPressed: cart.clearCart,
+                  child: const Text(
+                    'Clear All',
+                    style: TextStyle(color: Colors.deepOrange),
+                  ),
+                ),
+            ],
+          ),
+          body: cart.items.isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.shopping_cart_outlined,
+                        size: 70,
+                        color: Colors.grey,
+                      ),
+                      SizedBox(height: 12),
+                      Text('Корзина пуста', style: TextStyle(fontSize: 19)),
+                    ],
+                  ),
+                )
+              : Column(
+                  children: [
+                    Expanded(
+                      child: ListView.separated(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: cart.items.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final movie = cart.items[index];
+                          return Card(
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.all(8),
+                              leading: MoviePoster(
+                                imageUrl: movie.imageUrl,
+                                width: 55,
+                                height: 75,
+                              ),
+                              title: Text(
+                                movie.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text('${movie.price} ₸'),
+                              trailing: IconButton(
+                                tooltip: 'Удалить',
+                                onPressed: () {
+                                  cart.removeFromCart(movie);
+                                },
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade900,
+                        border: Border(
+                          top: BorderSide(color: Colors.grey.shade800),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Total Price',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '${cart.totalPrice} ₸',
+                            style: const TextStyle(
+                              color: Colors.deepOrange,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+}
+
+// ==================== MOVIE DETAIL SCREEN ====================
+
+class MovieDetailScreen extends StatelessWidget {
+  final Movie movie;
+  final Subscription subscription;
+  final bool isFavorite;
+  final VoidCallback onFavorite;
+
+  const MovieDetailScreen({
+    super.key,
+    required this.movie,
+    required this.subscription,
+    required this.isFavorite,
+    required this.onFavorite,
+  });
+
+  Future<void> openTrailer() async {
+    final Uri url = Uri.parse(
+      'https://www.youtube.com/results?search_query=${Uri.encodeComponent(movie.title + ' trailer')}',
+    );
+
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  void watchMovie(BuildContext context) {
+    if (!subscription.isActive) {
+      showSubscriptionSheet(context, subscription);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => PlayerScreen(movie: movie)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('О фильме'),
+        actions: [
+          IconButton(
+            onPressed: onFavorite,
+            icon: Icon(
+              isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: isFavorite ? Colors.red : null,
+            ),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            MoviePoster(
+              imageUrl: movie.imageUrl,
+              width: double.infinity,
+              height: 330,
+            ),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    movie.title,
+                    style: const TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '${movie.genre} • ${movie.year} • ${movie.duration} • ${movie.ageLimit}',
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 12),
+                  RatingRow(rating: movie.rating),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Описание',
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(movie.description, style: const TextStyle(fontSize: 16)),
+                  const SizedBox(height: 25),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: openTrailer,
+                      icon: const Icon(Icons.play_circle_outline),
+                      label: const Text('Смотреть трейлер'),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => watchMovie(context),
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Смотреть фильм'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== SETTINGS SCREEN ====================
+
+class SettingsScreen extends StatefulWidget {
+  final Subscription subscription;
+
+  const SettingsScreen({super.key, required this.subscription});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  bool notifications = true;
+  bool autoplay = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Настройки'),
+      ),
+      body: ListView(
+        children: [
+          SwitchListTile(
+            title: const Text('Уведомления'),
+            subtitle: const Text('Получать новости и обновления'),
+            value: notifications,
+            onChanged: (value) {
+              setState(() {
+                notifications = value;
+              });
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Автовоспроизведение'),
+            subtitle: const Text('Автоматически запускать видео'),
+            value: autoplay,
+            onChanged: (value) {
+              setState(() {
+                autoplay = value;
+              });
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.card_membership),
+            title: const Text('Подписка KinoPass'),
+            subtitle: Text(
+              widget.subscription.isActive
+                  ? 'Активна • ${widget.subscription.daysLeft} дней осталось'
+                  : 'Не активна',
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              showSubscriptionSheet(context, widget.subscription);
+            },
+          ),
+          const AboutListTile(
+            icon: Icon(Icons.info_outline),
+            applicationName: 'KinoPass',
+            applicationVersion: '1.0.0',
+            applicationLegalese: '© 2026 KinoPass',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==================== SUBSCRIPTION BANNER ====================
+
+class SubscriptionBanner extends StatelessWidget {
+  final Subscription subscription;
+
+  const SubscriptionBanner({super.key, required this.subscription});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: subscription,
+      builder: (context, child) {
+        return Container(
+          margin: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Colors.deepOrange, Color(0xFF9C2700)],
+            ),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.movie_filter, size: 40, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      subscription.isActive
+                          ? 'Подписка активна'
+                          : 'KinoPass Premium',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subscription.isActive
+                          ? 'Осталось дней: ${subscription.daysLeft}'
+                          : 'Откройте доступ к просмотру фильмов',
+                    ),
+                  ],
+                ),
+              ),
+              if (!subscription.isActive)
+                TextButton(
+                  onPressed: () {
+                    showSubscriptionSheet(context, subscription);
+                  },
+                  child: const Text(
+                    'Подключить',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ==================== SUBSCRIPTION SHEET ====================
+
+void showSubscriptionSheet(BuildContext context, Subscription subscription) {
+  showModalBottomSheet(
+    context: context,
+    builder: (sheetContext) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.workspace_premium,
+              size: 55,
+              color: Colors.deepOrange,
+            ),
+            const SizedBox(height: 15),
+            const Text(
+              'KinoPass Premium',
+              style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            const Text('Доступ к просмотру фильмов на 14 дней'),
+            const SizedBox(height: 10),
+            const Text(
+              '3 ₸',
+              style: TextStyle(
+                fontSize: 26,
+                color: Colors.deepOrange,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  subscription.activate();
+                  Navigator.pop(sheetContext);
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Подписка успешно активирована!'),
+                    ),
+                  );
+                },
+                child: const Text('Активировать подписку'),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+// ==================== PLAYER SCREEN ====================
+
+class PlayerScreen extends StatelessWidget {
+  final Movie movie;
+
+  const PlayerScreen({super.key, required this.movie});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(movie.title),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.play_circle_outline,
+              size: 100,
+              color: Colors.deepOrange,
+            ),
+            const SizedBox(height: 15),
+            const Text('Видеоплеер KinoPass', style: TextStyle(fontSize: 20)),
+            const SizedBox(height: 8),
+            Text(movie.title, style: const TextStyle(color: Colors.grey)),
+            const SizedBox(height: 15),
+            const Text(
+              'Здесь будет воспроизводиться фильм',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== MOVIE POSTER ====================
+
+class MoviePoster extends StatelessWidget {
+  final String imageUrl;
+  final double width;
+  final double height;
+
+  const MoviePoster({
+    super.key,
+    required this.imageUrl,
+    required this.width,
+    required this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey.shade800,
+            child: const Center(
+              child: Icon(Icons.movie, size: 45, color: Colors.white54),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ==================== RATING ====================
+
+class RatingRow extends StatelessWidget {
+  final double rating;
+
+  const RatingRow({super.key, required this.rating});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.star, color: Colors.amber, size: 18),
+        const SizedBox(width: 4),
+        Text(
+          rating.toString(),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ],
+    );
+  }
+}
 
 // ==================== CLOUD PRODUCT EXPLORER ====================
 
@@ -131,7 +1567,8 @@ class Product {
       id: (json['id'] as num?)?.toInt() ?? 0,
       title: json['title']?.toString() ?? 'Unknown product',
       price: (json['price'] as num?)?.toDouble() ?? 0.0,
-      description: json['description']?.toString() ?? 'No description available.',
+      description:
+          json['description']?.toString() ?? 'No description available.',
       category: json['category']?.toString() ?? 'Uncategorized',
       imageUrl: json['image']?.toString() ?? '',
       rating: (ratingJson['rate'] as num?)?.toDouble() ?? 0.0,
@@ -144,16 +1581,31 @@ class ProductApiService {
   static const String endpoint = 'https://fakestoreapi.com/products';
 
   Future<List<Product>> fetchProducts() async {
-    final response = await http
-        .get(Uri.parse(endpoint))
-        .timeout(const Duration(seconds: 10));
+    final http.Response response;
+    try {
+      response = await http
+          .get(Uri.parse(endpoint))
+          .timeout(const Duration(seconds: 10));
+    } on TimeoutException {
+      throw Exception('The server took too long to respond (10 s timeout).');
+    } on http.ClientException {
+      throw Exception('No internet connection. Check Wi-Fi or mobile data.');
+    }
 
     if (response.statusCode == 200) {
-      final decoded = jsonDecode(response.body) as List<dynamic>;
+      final Object? decoded;
+      try {
+        decoded = jsonDecode(response.body);
+      } on FormatException {
+        throw Exception('The server sent invalid data.');
+      }
+      if (decoded is! List) {
+        throw Exception('The server sent invalid data.');
+      }
       return decoded
-          .map((item) => Product.fromJson(
-                Map<String, dynamic>.from(item as Map),
-              ))
+          .map(
+            (item) => Product.fromJson(Map<String, dynamic>.from(item as Map)),
+          )
           .toList();
     } else if (response.statusCode == 404) {
       throw Exception('Products were not found (404).');
@@ -219,7 +1671,10 @@ class _ProductExplorerScreenState extends State<ProductExplorerScreen> {
                     const SizedBox(height: 16),
                     const Text(
                       'Connection problem',
-                      style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -285,9 +1740,15 @@ class _ProductExplorerScreenState extends State<ProductExplorerScreen> {
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              const Icon(Icons.star, color: Colors.amber, size: 16),
+                              const Icon(
+                                Icons.star,
+                                color: Colors.amber,
+                                size: 16,
+                              ),
                               const SizedBox(width: 4),
-                              Text('${product.rating} (${product.reviewCount})'),
+                              Text(
+                                '${product.rating} (${product.reviewCount})',
+                              ),
                             ],
                           ),
                           const SizedBox(height: 4),
@@ -306,7 +1767,8 @@ class _ProductExplorerScreenState extends State<ProductExplorerScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => ProductDetailScreen(product: product),
+                          builder: (context) =>
+                              ProductDetailScreen(product: product),
                         ),
                       );
                     },
@@ -433,7 +1895,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     right: 16,
                     bottom: 42,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black87,
                         borderRadius: BorderRadius.circular(20),
@@ -468,9 +1933,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
-                      color: Colors.deepOrange.withOpacity(0.18),
+                      color: Colors.deepOrange.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -481,7 +1949,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   const SizedBox(height: 14),
                   Text(
                     product.title,
-                    style: const TextStyle(fontSize: 23, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 23,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -511,7 +1982,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
-                  Text(product.description, style: const TextStyle(fontSize: 16, height: 1.5)),
+                  Text(
+                    product.description,
+                    style: const TextStyle(fontSize: 16, height: 1.5),
+                  ),
                 ],
               ),
             ),
@@ -583,7 +2057,6 @@ class ProductImage extends StatelessWidget {
   }
 }
 
-
 // ==================== LW11: LOCAL DATA STORAGE ====================
 class NoteItem {
   final String id;
@@ -599,15 +2072,17 @@ class NoteItem {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'dateText': dateText,
-        'isCompleted': isCompleted,
-      };
+    'id': id,
+    'title': title,
+    'dateText': dateText,
+    'isCompleted': isCompleted,
+  };
 
   factory NoteItem.fromJson(Map<String, dynamic> json) {
     return NoteItem(
-      id: json['id']?.toString() ?? DateTime.now().microsecondsSinceEpoch.toString(),
+      id:
+          json['id']?.toString() ??
+          DateTime.now().microsecondsSinceEpoch.toString(),
       title: json['title']?.toString() ?? 'Untitled note',
       dateText: json['dateText']?.toString() ?? '',
       isCompleted: json['isCompleted'] as bool? ?? false,
@@ -615,11 +2090,11 @@ class NoteItem {
   }
 
   NoteItem copyWith({bool? isCompleted}) => NoteItem(
-        id: id,
-        title: title,
-        dateText: dateText,
-        isCompleted: isCompleted ?? this.isCompleted,
-      );
+    id: id,
+    title: title,
+    dateText: dateText,
+    isCompleted: isCompleted ?? this.isCompleted,
+  );
 }
 
 class NotesVaultScreen extends StatefulWidget {
@@ -639,7 +2114,7 @@ class NotesVaultScreen extends StatefulWidget {
 class _NotesVaultScreenState extends State<NotesVaultScreen> {
   static const String _themeKey = 'app_theme_dark_mode';
   static const String _nameKey = 'user_display_name';
-  static const String _notesKey = 'saved_notes_json';
+  static const String _notesKey = 'saved_notes_list';
 
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
@@ -664,7 +2139,10 @@ class _NotesVaultScreenState extends State<NotesVaultScreen> {
       try {
         final decoded = jsonDecode(savedNotes) as List<dynamic>;
         loadedNotes = decoded
-            .map((item) => NoteItem.fromJson(Map<String, dynamic>.from(item as Map)))
+            .map(
+              (item) =>
+                  NoteItem.fromJson(Map<String, dynamic>.from(item as Map)),
+            )
             .toList();
       } catch (error) {
         debugPrint('Could not read saved notes: $error');
@@ -683,18 +2161,17 @@ class _NotesVaultScreenState extends State<NotesVaultScreen> {
   Future<void> _saveName() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a username')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter a username')));
       return;
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_nameKey, name);
     if (!mounted) return;
     setState(() => _displayName = name);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Username saved')),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Username saved')));
   }
 
   Future<void> _saveNotes() async {
@@ -707,7 +2184,8 @@ class _NotesVaultScreenState extends State<NotesVaultScreen> {
     final title = _noteController.text.trim();
     if (title.isEmpty) return;
     final now = DateTime.now();
-    final dateText = '${now.day.toString().padLeft(2, '0')}.${now.month.toString().padLeft(2, '0')}.${now.year}';
+    final dateText =
+        '${now.day.toString().padLeft(2, '0')}.${now.month.toString().padLeft(2, '0')}.${now.year}';
     setState(() {
       _notes.insert(
         0,
@@ -753,9 +2231,7 @@ class _NotesVaultScreenState extends State<NotesVaultScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Offline Notes & Settings Vault'),
-      ),
+      appBar: AppBar(title: const Text('Offline Notes & Settings Vault')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SafeArea(
@@ -768,7 +2244,10 @@ class _NotesVaultScreenState extends State<NotesVaultScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Hello, $_displayName', style: Theme.of(context).textTheme.headlineSmall),
+                          Text(
+                            'Hello, $_displayName!',
+                            style: Theme.of(context).textTheme.headlineSmall,
+                          ),
                           const SizedBox(height: 12),
                           TextField(
                             controller: _nameController,
@@ -794,7 +2273,9 @@ class _NotesVaultScreenState extends State<NotesVaultScreen> {
                   const SizedBox(height: 12),
                   Card(
                     child: SwitchListTile(
-                      secondary: Icon(_darkMode ? Icons.dark_mode : Icons.light_mode),
+                      secondary: Icon(
+                        _darkMode ? Icons.dark_mode : Icons.light_mode,
+                      ),
                       title: const Text('Dark Mode'),
                       subtitle: const Text('Theme is saved on this device'),
                       value: _darkMode,
@@ -802,7 +2283,10 @@ class _NotesVaultScreenState extends State<NotesVaultScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  Text('My Notes', style: Theme.of(context).textTheme.titleLarge),
+                  Text(
+                    'My Notes',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                   const SizedBox(height: 10),
                   Row(
                     children: [
@@ -829,7 +2313,9 @@ class _NotesVaultScreenState extends State<NotesVaultScreen> {
                   if (_notes.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 30),
-                      child: Center(child: Text('No notes yet. Add your first note.')),
+                      child: Center(
+                        child: Text('No notes yet. Add your first note.'),
+                      ),
                     )
                   else
                     ..._notes.map(
@@ -837,19 +2323,27 @@ class _NotesVaultScreenState extends State<NotesVaultScreen> {
                         child: ListTile(
                           leading: Checkbox(
                             value: note.isCompleted,
-                            onChanged: (value) => _toggleNote(note, value ?? false),
+                            onChanged: (value) =>
+                                _toggleNote(note, value ?? false),
                           ),
                           title: Text(
                             note.title,
                             style: TextStyle(
-                              decoration: note.isCompleted ? TextDecoration.lineThrough : null,
-                              color: note.isCompleted ? Theme.of(context).disabledColor : null,
+                              decoration: note.isCompleted
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              color: note.isCompleted
+                                  ? Theme.of(context).disabledColor
+                                  : null,
                             ),
                           ),
                           subtitle: Text(note.dateText),
                           trailing: IconButton(
                             tooltip: 'Delete note',
-                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.redAccent,
+                            ),
                             onPressed: () => _deleteNote(note),
                           ),
                         ),
